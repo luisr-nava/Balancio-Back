@@ -1,0 +1,35 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16
+    container_name: balancio-postgres
+    restart: always
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: balancio
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - balancio-network
+
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    container_name: balancio-mailhog
+    restart: always
+    ports:
+      - "1025:1025"   # SMTP
+      - "8025:8025"   # Web UI
+    networks:
+      - balancio-network
+
+      
+volumes:
+  postgres_data:
+
+networks:
+  balancio-network:
+    driver: bridge
