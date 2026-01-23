@@ -21,6 +21,7 @@ import { JwtService } from '@nestjs/jwt';
 import { VerificationType } from './interfaces';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateUserRoleDto } from './dto/update-user-rol.dto';
+import { BillingService } from '@/billing/billing.service';
 @Injectable()
 export class AuthService {
   constructor(
@@ -28,6 +29,7 @@ export class AuthService {
     private readonly authRepository: Repository<User>,
     @InjectRepository(VerificationCode)
     private readonly verificationCodeRepository: Repository<VerificationCode>,
+    private readonly billingService: BillingService,
     private readonly emailService: EmailService,
     private readonly jwtService: JwtService,
   ) {}
@@ -363,6 +365,11 @@ export class AuthService {
     if (!user) {
       throw new UnauthorizedException('Usuario no encontrado');
     }
+
+    const subscription = await this.billingService.getSubscriptionByOwner(
+      user.id,
+    );
+
     const {
       password,
       forgotAttempts,
@@ -372,7 +379,13 @@ export class AuthService {
       resendLockUntil,
       ...rest
     } = user;
-    return rest;
+    return {
+      ...rest,
+      plan: subscription?.plan ?? 'FREE',
+      subscriptionStatus: subscription?.status ?? null,
+      currentPeriodEnd: subscription?.currentPeriodEnd ?? null,
+      pendingPlan: subscription?.pendingPlan ?? null,
+    };
   }
 
   async getEmployeesByOwner(ownerId: string) {

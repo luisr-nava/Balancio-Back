@@ -10,6 +10,7 @@ import { EmailModule } from '@/email/email.module';
 import { VerificationCode } from './entities/verification-code.entity';
 import { VerificationCodeCleanupJob } from '@/jobs/verification-code.cleanup.job';
 import { JwtStrategy } from './strategies/jwt.strategies';
+import { BillingModule } from '@/billing/billing.module';
 
 @Module({
   controllers: [AuthController],
@@ -17,6 +18,7 @@ import { JwtStrategy } from './strategies/jwt.strategies';
   imports: [
     ConfigModule,
     EmailModule,
+    BillingModule,
     TypeOrmModule.forFeature([VerificationCode, User]),
     PassportModule.register({
       defaultStrategy: 'jwt',

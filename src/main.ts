@@ -2,14 +2,23 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { envs } from './config';
+import * as bodyParser from 'body-parser';
 
 async function bootstrap() {
   const logger = new Logger('Balancio - Running');
 
   const app = await NestFactory.create(AppModule, {
     logger: ['error', 'verbose'],
+    bodyParser: false,
   });
   app.setGlobalPrefix('api/v1');
+  app.use(
+    '/api/v1/billing/webhook',
+    bodyParser.raw({ type: 'application/json' }),
+  );
+  app.use(bodyParser.json());
+  app.use(bodyParser.urlencoded({ extended: true }));
+  
   const allowedOrigins = [
     envs.frontendUrl || 'http://localhost:3000',
     'http://localhost:3000',
