@@ -1,8 +1,10 @@
+import { Shop } from '@/shop/entities/shop.entity';
 import {
   Column,
   CreateDateColumn,
   Entity,
   Index,
+  OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
@@ -95,6 +97,9 @@ export class User {
 
   @Column({ default: true })
   isActive: boolean;
+
+  @OneToMany(() => Shop, (shop) => shop.owner)
+  ownedShops: Shop[];
 
   @Column({ type: 'timestamp', nullable: true })
   deletedAt: Date | null;

@@ -13,7 +13,7 @@ export const typeORMConfig = (
     database: configService.get<string>('DB_NAME') || 'authdb',
     // entities: [join(__dirname, '..', '**', '*.entity.{ts,js}')],
     synchronize: true,
-    autoLoadEntities: true,
+    entities: [join(__dirname, '..', '**', '*.entity.{ts,js}')],
     retryAttempts: 5,
     retryDelay: 3000,
   };
