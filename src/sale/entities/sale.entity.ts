@@ -54,7 +54,6 @@ import {
 import { Shop } from '@/shop/entities/shop.entity';
 import { User } from '@/auth/entities/user.entity';
 import { CashMovement } from '@/cash-register/entities/cash-movement.entity';
-import { CustomerAccountMovement } from '@/customer/entities/customer-account-movement.entity';
 import { Customer } from '@/customer/entities/customer.entity';
 import { PaymentMethod } from '@/payment-method/entities/payment-method.entity';
 import { SaleHistory } from './sale-history.entity';
@@ -160,8 +159,8 @@ export class Sale {
   @OneToMany(() => SaleReturn, (sr) => sr.sale)
   saleReturns: SaleReturn[];
 
-  @OneToOne(() => CustomerAccountMovement, { nullable: true })
-  accountMovement?: CustomerAccountMovement | null;
+  // @OneToOne(() => CustomerAccountMovement, { nullable: true })
+  // accountMovement?: CustomerAccountMovement | null;
 
   @OneToOne(() => CashMovement, { nullable: true })
   cashMovement?: CashMovement | null;

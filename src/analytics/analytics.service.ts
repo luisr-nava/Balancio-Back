@@ -118,14 +118,14 @@ export class AnalyticsService {
   ): Promise<AnalyticsResponse> {
     const shop = await this.shopRepo.findOne({
       where: { id: query.shopId },
-      select: ['id', 'projectId', 'timezone', 'ownerId'],
+      select: ['id', 'timezone', 'ownerId'],
     });
 
     if (!shop) {
       throw new BadRequestException('La tienda no existe');
     }
 
-    await this.ensureShopAccess(shop.id, shop.projectId, user);
+    await this.ensureShopAccess(shop.id, user);
 
     const periodRange = resolveAnalyticsPeriodRange(
       query,
@@ -297,15 +297,7 @@ export class AnalyticsService {
     }
   }
 
-  private async ensureShopAccess(
-    shopId: string,
-    projectId: string,
-    user: JwtPayload,
-  ) {
-    if (projectId !== user.projectId) {
-      throw new ForbiddenException('No tenés acceso a esta tienda');
-    }
-
+  private async ensureShopAccess(shopId: string, user: JwtPayload) {
     if (user.role === 'EMPLOYEE') {
       const employee = await this.userRepo
         .createQueryBuilder('user')

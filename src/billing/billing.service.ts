@@ -10,7 +10,6 @@ type StripeSubscriptionWithPeriod = Stripe.Subscription & {
   current_period_end?: number | null;
 };
 
-
 // TODO: Change process.env.STRIPE_*** for envs
 @Injectable()
 export class BillingService {

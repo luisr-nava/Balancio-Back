@@ -1,9 +1,4 @@
 import { Shop } from '@/shop/entities/shop.entity';
-export enum CashRegisterStatus {
-  OPEN = 'OPEN',
-  CLOSED = 'CLOSED',
-  CANCELLED = 'CANCELLED',
-}
 
 export enum CashMovementType {
   SALE = 'SALE',
@@ -27,53 +22,53 @@ import {
   Column,
   ManyToOne,
   OneToMany,
+  CreateDateColumn,
   Index,
 } from 'typeorm';
-import { CashRegisterExport } from './cash-register-export.entity';
-import { CashMovement } from './cash-movement.entity';
+import { CashRegisterStatus } from '../enums/cash-register-status.enum';
 
-@Entity()
+@Entity('cash_registers')
 @Index(['shopId', 'status'])
 @Index(['openedAt'])
 export class CashRegister {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column()
+  @Column({ type: 'uuid' })
   shopId: string;
 
-  @Column()
+  @Column({ type: 'uuid' })
   employeeId: string;
 
-  @Column('float')
-  openingAmount: number;
+  @Column({ type: 'decimal', precision: 12, scale: 2 })
+  openingAmount: string;
 
-  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
+  @CreateDateColumn({ type: 'timestamp with time zone' })
   openedAt: Date;
 
-  @Column({ type: 'text', nullable: true })
-  openedByUserId?: string | null;
+  @Column({ type: 'uuid', nullable: true })
+  openedByUserId?: string;
+
+  @Column({ type: 'varchar', length: 150, nullable: true })
+  openedByName?: string;
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
+  closingAmount?: number;
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
+  actualAmount?: number;
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
+  difference?: number;
+
+  @Column({ type: 'timestamp with time zone', nullable: true })
+  closedAt?: Date;
+
+  @Column({ type: 'uuid', nullable: true })
+  closedBy?: string;
 
   @Column({ type: 'text', nullable: true })
-  openedByName?: string | null;
-
-  @Column('float', { nullable: true })
-  closingAmount?: number | null;
-
-  @Column('float', { nullable: true })
-  actualAmount?: number | null;
-
-  @Column('float', { nullable: true })
-  difference?: number | null;
-
-  @Column({ type: 'timestamp', nullable: true })
-  closedAt?: Date | null;
-
-  @Column({ type: 'text', nullable: true })
-  closedBy?: string | null;
-
-  @Column({ type: 'text', nullable: true })
-  closingNotes?: string | null;
+  closingNotes?: string;
 
   @Column({
     type: 'enum',
@@ -82,12 +77,7 @@ export class CashRegister {
   })
   status: CashRegisterStatus;
 
-  @ManyToOne(() => Shop, (shop) => shop.cashRegisters)
+  // Relaciones mínimas
+  @ManyToOne(() => Shop, { onDelete: 'CASCADE' })
   shop: Shop;
-
-  @OneToMany(() => CashMovement, (movement) => movement.cashRegister)
-  movements: CashMovement[];
-
-  @OneToMany(() => CashRegisterExport, (exp) => exp.cashRegister)
-  exports: CashRegisterExport[];
 }

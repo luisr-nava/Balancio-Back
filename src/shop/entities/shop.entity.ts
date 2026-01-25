@@ -25,6 +25,7 @@ import { SaleReturn } from '@/sale/entities/sale-return.entity';
 import { ShopMeasurementUnit } from '@/measurement-unit/entities/shop-measurement-unit.entity';
 import { PaymentMethod } from '@/payment-method/entities/payment-method.entity';
 import { StockAlert } from '@/stock/entities/stock.entity';
+import { UserShop } from '@/auth/entities/user-shop.entity';
 
 @Entity('shops')
 export class Shop {
@@ -45,9 +46,6 @@ export class Shop {
   @JoinColumn({ name: 'ownerId' })
   owner: User;
 
-  @Column()
-  projectId: string;
-
   @Column({ default: true })
   isActive: boolean;
 
@@ -58,7 +56,7 @@ export class Shop {
   countryCode: string;
 
   @Column({ default: 'USD' })
-  currencyCode: string;
+  currency: string;
 
   @Column({ default: 'UTC' })
   timezone: string;
@@ -67,8 +65,8 @@ export class Shop {
   lowStockThreshold?: number;
 
   // 🔗 RELACIONES
-  // @OneToMany(() => UserShop, (us) => us.shop)
-  // userShops: UserShop[];
+  @OneToMany(() => UserShop, (us) => us.shop)
+  userShops: UserShop[];
 
   @OneToMany(() => Expense, (e) => e.shop)
   expenses: Expense[];

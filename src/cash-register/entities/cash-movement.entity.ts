@@ -58,8 +58,8 @@ export class CashMovement {
   @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   createdAt: Date;
 
-  @ManyToOne(() => CashRegister, (cr) => cr.movements)
-  cashRegister: CashRegister;
+  // @ManyToOne(() => CashRegister, (cr) => cr.movements)
+  // cashRegister: CashRegister;
 
   @ManyToOne(() => Sale, { nullable: true })
   sale?: Sale | null;

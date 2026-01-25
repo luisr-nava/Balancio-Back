@@ -8,6 +8,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import { UserShop } from './user-shop.entity';
 
 export enum UserRole {
   OWNER = 'OWNER',
@@ -106,4 +107,7 @@ export class User {
 
   @Column({ type: 'varchar', nullable: true })
   deletedBy: string | null;
+
+  @OneToMany(() => UserShop, (us) => us.user)
+  userShops: UserShop[];
 }

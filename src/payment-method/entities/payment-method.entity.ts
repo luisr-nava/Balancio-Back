@@ -33,7 +33,6 @@ import {
 import { Shop } from '@/shop/entities/shop.entity';
 import { Income } from '@/income/entities/income.entity';
 import { Expense } from '@/expense/entities/expense.entity';
-import { CustomerPayment } from '@/customer/entities/customer-payment.entity';
 import { Purchase } from '@/purchase/entities/purchase.entity';
 import { Sale } from '@/sale/entities/sale.entity';
 
@@ -87,6 +86,6 @@ export class PaymentMethod {
   @OneToMany(() => Expense, (expense) => expense.paymentMethod)
   expenses: Expense[];
 
-  @OneToMany(() => CustomerPayment, (payment) => payment.paymentMethod)
-  customerPayments: CustomerPayment[];
+  // @OneToMany(() => CustomerPayment, (payment) => payment.paymentMethod)
+  // customerPayments: CustomerPayment[];
 }
