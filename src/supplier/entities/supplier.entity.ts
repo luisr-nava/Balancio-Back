@@ -5,6 +5,7 @@ import {
   Column,
   ManyToOne,
   OneToMany,
+  JoinColumn,
 } from 'typeorm';
 import { SupplierShop } from './supplier-shop.entity';
 import { SupplierCategory } from '@/supplier-category/entities/supplier-category.entity';
@@ -46,12 +47,10 @@ export class Supplier {
   @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   createdAt: Date;
 
-  @Column({ nullable: true })
-  categoryId?: string | null;
-
-  @ManyToOne(() => SupplierCategory, (category) => category.suppliers, {
+  @ManyToOne(() => SupplierCategory, {
     nullable: true,
   })
+  @JoinColumn({ name: 'category_id' })
   category?: SupplierCategory | null;
 
   // Relaciones
