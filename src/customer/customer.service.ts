@@ -30,8 +30,7 @@ export class CustomerService {
     });
 
     const savedCustomer = await this.customerRepository.save(customer);
-    console.log(savedCustomer);
-    console.log(customer);
+    
 
     return {
       message: 'Cliente creado exitosamente',
