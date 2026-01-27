@@ -28,7 +28,7 @@ export class SupplierService {
       );
     }
 
-    const supplier = this.supplierRepository.create({
+    const supplier = await this.supplierRepository.create({
       name: createSupplierDto.name,
       ownerId: user.ownerId || user.id,
       category: createSupplierDto.categoryId
@@ -140,7 +140,6 @@ export class SupplierService {
       throw new ConflictException('El proveedor no existe');
     }
 
-    // 🔹 Validar nombre duplicado (si cambia)
     if (updateSupplierDto.name && updateSupplierDto.name !== supplier.name) {
       const exists = await this.supplierRepository.findOneBy({
         name: updateSupplierDto.name,
@@ -154,7 +153,6 @@ export class SupplierService {
       }
     }
 
-    // 🔹 Update campos simples
     Object.assign(supplier, {
       name: updateSupplierDto.name ?? supplier.name,
       contactName: updateSupplierDto.contactName ?? supplier.contactName,

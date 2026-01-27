@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ConflictException, Injectable } from '@nestjs/common';
 import { CreateSupplierCategoryDto } from './dto/create-supplier-category.dto';
 import { UpdateSupplierCategoryDto } from './dto/update-supplier-category.dto';
 import { JwtPayload } from 'jsonwebtoken';
@@ -19,9 +19,9 @@ export class SupplierCategoryService {
       where: { name: dto.name, shopId: dto.shopId },
     });
     if (existingCategory) {
-      return {
-        message: `Ya existe una categoría llamada ${existingCategory.name} de proveedor con nombre en la tienda`,
-      };
+      throw new ConflictException(
+        `Ya existe una categoría llamada ${existingCategory.name} de proveedor con nombre en la tienda`,
+      );
     }
 
     await this.shopAccessService.assertCanAccessShop(dto.shopId, user);

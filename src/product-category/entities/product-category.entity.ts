@@ -2,24 +2,21 @@ import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
-  ManyToOne,
   OneToMany,
-  Unique,
+  ManyToOne,
+  JoinColumn,
 } from 'typeorm';
-import { Shop } from '@/shop/entities/shop.entity';
 import { Product } from '@/product/entities/product.entity';
+import { CategoryProductShop } from './product-category-shop.entity';
+import { User } from '@/auth/entities/user.entity';
 
 @Entity()
-@Unique(['name', 'shopId'])
 export class ProductCategory {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
   @Column()
   name: string;
-
-  @Column()
-  shopId: string;
 
   // Auditoría
   @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
@@ -47,9 +44,21 @@ export class ProductCategory {
   @Column({ type: 'text', nullable: true })
   disabledBy?: string | null;
 
+  @ManyToOne(() => User)
+  @JoinColumn({ name: 'createdBy' })
+  createdByUser: User;
+
+  @ManyToOne(() => User)
+  @JoinColumn({ name: 'updatedBy' })
+  updatedByUser: User;
+
+  @ManyToOne(() => User)
+  @JoinColumn({ name: 'disabledBy' })
+  disabledByUser: User;
+
   // Relaciones
-  @ManyToOne(() => Shop, (shop) => shop.productCategories)
-  shop: Shop;
+  @OneToMany(() => CategoryProductShop, (cs) => cs.category)
+  categoryProductShops: CategoryProductShop[];
 
   @OneToMany(() => Product, (product) => product.category)
   products: Product[];

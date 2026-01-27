@@ -26,6 +26,7 @@ import { ShopMeasurementUnit } from '@/measurement-unit/entities/shop-measuremen
 import { PaymentMethod } from '@/payment-method/entities/payment-method.entity';
 import { StockAlert } from '@/stock/entities/stock.entity';
 import { UserShop } from '@/auth/entities/user-shop.entity';
+import { CategoryProductShop } from '@/product-category/entities/product-category-shop.entity';
 
 @Entity('shops')
 export class Shop {
@@ -86,8 +87,8 @@ export class Shop {
   @OneToMany(() => SupplierShop, (ss) => ss.shop)
   supplierShop: SupplierShop[];
 
-  @OneToMany(() => ProductCategory, (c) => c.shop)
-  productCategories: ProductCategory[];
+  @OneToMany(() => CategoryProductShop, (cs) => cs.shop)
+  categoryProductShops: CategoryProductShop[];
 
   @OneToMany(() => SupplierCategory, (sc) => sc.shop)
   supplierCategories: SupplierCategory[];

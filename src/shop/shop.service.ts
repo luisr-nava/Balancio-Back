@@ -11,6 +11,7 @@ import { Repository } from 'typeorm';
 import { normalizeShopConfig } from './utils/normalize-shop-config';
 import { UserShop, UserShopRole } from '@/auth/entities/user-shop.entity';
 import { UpdateShopDto } from './dto/update-shop.dto';
+import { BillingService } from '@/billing/billing.service';
 
 @Injectable()
 export class ShopService {
@@ -19,6 +20,7 @@ export class ShopService {
     private readonly shopRepository: Repository<Shop>,
     @InjectRepository(UserShop)
     private readonly userShopRepository: Repository<UserShop>,
+    private readonly billingService: BillingService,
   ) {}
   async createShop(user: JwtPayload, dto: CreateShopDto) {
     if (user.role !== 'OWNER') {
@@ -26,12 +28,13 @@ export class ShopService {
     }
     const countryCode = dto.countryCode.toUpperCase();
 
-    const hasActiveSubscription =
-      (user.subscriptionStatus ?? '').toLowerCase() === 'active';
+    const hasActiveSubscription = await this.billingService.hasActiveSubscription(
+      user.id,
+    );
     const maxShopsAllowed = hasActiveSubscription ? 3 : 1;
 
     const shopCount = await this.shopRepository.count({
-      where: { ownerId: user.sub },
+      where: { ownerId: user.id },
     });
     if (shopCount >= maxShopsAllowed) {
       throw new ForbiddenException(
