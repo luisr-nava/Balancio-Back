@@ -3,6 +3,7 @@ import { AppModule } from './app.module';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { envs } from './config';
 import * as bodyParser from 'body-parser';
+import { SeedRunner } from './database/seeds';
 
 async function bootstrap() {
   const logger = new Logger('Balancio - Running');
@@ -18,7 +19,6 @@ async function bootstrap() {
   );
   app.use(bodyParser.json());
   app.use(bodyParser.urlencoded({ extended: true }));
-  
   const allowedOrigins = [
     envs.frontendUrl || 'http://localhost:3000',
     'http://localhost:3000',
@@ -53,8 +53,10 @@ async function bootstrap() {
       transform: true,
     }),
   );
+  const seedRunner = app.get(SeedRunner);
 
   try {
+    await seedRunner.run();
     logger.verbose(`Server running in port ${envs.port}`);
     await app.listen(envs.port);
   } catch (error) {

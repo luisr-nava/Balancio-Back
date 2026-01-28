@@ -25,6 +25,7 @@ import { SaleReturnModule } from './sale-return/sale-return.module';
 import { StockModule } from './stock/stock.module';
 import { SupplierModule } from './supplier/supplier.module';
 import { SupplierCategoryModule } from './supplier-category/supplier-category.module';
+import { SeedModule } from './database/seeds/seed.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { SupplierCategoryModule } from './supplier-category/supplier-category.mo
       inject: [ConfigService],
       useFactory: typeORMConfig,
     }),
+    SeedModule,
     AuthModule,
     EmailModule,
     BillingModule,

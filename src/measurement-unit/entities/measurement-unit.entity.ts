@@ -65,4 +65,13 @@ export class MeasurementUnit {
 
   @OneToMany(() => Product, (product) => product.measurementUnit)
   products: Product[];
+
+  @Column({ default: true })
+  isActive: boolean;
+
+  @Column({ type: 'timestamp', nullable: true })
+  disabledAt?: Date | null;
+
+  @Column({ type: 'text', nullable: true })
+  disabledByUserId?: string | null;
 }
