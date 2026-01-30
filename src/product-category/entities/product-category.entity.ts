@@ -60,6 +60,11 @@ export class ProductCategory {
   @OneToMany(() => CategoryProductShop, (cs) => cs.category)
   categoryProductShops: CategoryProductShop[];
 
+  @ManyToOne(() => ProductCategory, (category) => category.products, {
+    nullable: true,
+  })
+  category?: ProductCategory | null;
+  
   @OneToMany(() => Product, (product) => product.category)
   products: Product[];
 }

@@ -21,32 +21,8 @@ export class Product {
   @Column({ type: 'text', nullable: true })
   description?: string | null;
 
-  @Column({ type: 'text', nullable: true })
+  @Column({ type: 'text', nullable: true, unique: true })
   barcode?: string | null;
-
-  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
-  createdAt: Date;
-
-  @Column({ type: 'text', nullable: true })
-  taxCategory?: string | null;
-
-  @Column('float', { nullable: true })
-  taxRate?: number | null;
-
-  @Column({ default: false })
-  allowPriceOverride: boolean;
-
-  @Column({ nullable: true })
-  supplierId?: string | null;
-
-  @ManyToOne(() => Supplier, { nullable: true })
-  supplier?: Supplier | null;
-
-  @Column({ nullable: true })
-  categoryId?: string | null;
-
-  @ManyToOne(() => ProductCategory, { nullable: true })
-  category?: ProductCategory | null;
 
   @Column()
   measurementUnitId: string;
@@ -54,6 +30,22 @@ export class Product {
   @ManyToOne(() => MeasurementUnit)
   measurementUnit: MeasurementUnit;
 
+  @Column({ default: false })
+  allowPriceOverride: boolean;
+
+  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
+  createdAt: Date;
+
   @OneToMany(() => ShopProduct, (sp) => sp.product)
   shopProducts: ShopProduct[];
+
+  @ManyToOne(() => ProductCategory, (category) => category.products, {
+    nullable: true,
+  })
+  category?: ProductCategory | null;
+
+  @ManyToOne(() => Supplier, (supplier) => supplier.products, {
+    nullable: true,
+  })
+  supplier?: Supplier | null;
 }

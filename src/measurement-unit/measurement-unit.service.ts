@@ -7,11 +7,7 @@ import {
 import { CreateMeasurementUnitDto } from './dto/create-measurement-unit.dto';
 import { UpdateMeasurementUnitDto } from './dto/update-measurement-unit.dto';
 import { InjectRepository } from '@nestjs/typeorm';
-import {
-  MeasurementBaseUnit,
-  MeasurementUnit,
-  MeasurementUnitCategory,
-} from './entities/measurement-unit.entity';
+import { MeasurementUnit } from './entities/measurement-unit.entity';
 import { JwtPayload } from 'jsonwebtoken';
 import { In, Repository } from 'typeorm';
 import { ShopMeasurementUnit } from './entities/shop-measurement-unit.entity';

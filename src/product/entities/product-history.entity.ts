@@ -1,7 +1,6 @@
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne } from 'typeorm';
 import { ShopProduct } from './shop-product.entity';
 import { Purchase } from '@/purchase/entities/purchase.entity';
-
 @Entity()
 export class ProductHistory {
   @PrimaryGeneratedColumn('uuid')

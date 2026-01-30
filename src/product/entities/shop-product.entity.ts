@@ -28,6 +28,9 @@ export class ShopProduct {
   @Column()
   productId: string;
 
+  @Column({ type: 'uuid', nullable: true })
+  categoryId: string | null;
+
   @Column('float')
   costPrice: number;
 
@@ -37,11 +40,11 @@ export class ShopProduct {
   @Column({ type: 'float', nullable: true })
   stock?: number | null;
 
-  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
-  createdAt: Date;
+  @Column({ type: 'float', nullable: true })
+  taxRate?: number | null;
 
   @Column({ type: 'text', nullable: true })
-  createdBy?: string | null;
+  taxCategory?: string | null;
 
   @Column({ default: 'USD' })
   currency: string;
@@ -49,30 +52,21 @@ export class ShopProduct {
   @Column({ default: true })
   isActive: boolean;
 
-  @OneToMany(() => ProductHistory, (ph) => ph.shopProduct)
-  productHistories: ProductHistory[];
+  @Column({ type: 'text', nullable: true })
+  createdBy?: string | null;
 
-  @OneToMany(() => PurchaseItem, (pi) => pi.shopProduct)
-  purchaseItems: PurchaseItem[];
-
-  @OneToMany(() => SaleItem, (si) => si.shopProduct)
-  saleItems: SaleItem[];
-
-  @OneToMany(() => SaleReturnItem, (sri) => sri.shopProduct)
-  saleReturnItems: SaleReturnItem[];
-
-  @OneToMany(() => PurchaseReturnItem, (pri) => pri.shopProduct)
-  purchaseReturnItems: PurchaseReturnItem[];
-
-  @OneToMany(() => ReplacementItem, (ri) => ri.shopProduct)
-  replacementItems: ReplacementItem[];
-
-  @OneToMany(() => StockAlert, (sa) => sa.shopProduct)
-  stockAlerts: StockAlert[];
+  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
+  createdAt: Date;
 
   @ManyToOne(() => Product, (product) => product.shopProducts)
   product: Product;
 
   @ManyToOne(() => Shop, (shop) => shop.shopProducts)
   shop: Shop;
+
+  @OneToMany(() => ProductHistory, (ph) => ph.shopProduct)
+  productHistories: ProductHistory[];
+
+  @Column({ type: 'uuid', nullable: true })
+  supplierId: string | null;
 }
