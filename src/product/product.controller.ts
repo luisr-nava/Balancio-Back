@@ -54,14 +54,13 @@ export class ProductController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Patch(':productId/shop/:shopId')
-  updateForShop(
+  @Patch(':productId')
+  update(
     @Param('productId') productId: string,
-    @Param('shopId') shopId: string,
     @Body() dto: UpdateProductDto,
     @GetUser() user: JwtPayload,
   ) {
-    return this.productService.updateShopProduct(productId, shopId, dto, user);
+    return this.productService.updateProduct(productId, dto, user);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -72,11 +71,5 @@ export class ProductController {
     @GetUser() user: JwtPayload,
   ) {
     return this.productService.deleteProduct(id, user, body);
-  }
-
-  @UseGuards(JwtAuthGuard)
-  @Patch('bulk')
-  bulkUpdate(@Body() dto: BulkUpdateProductDto, @GetUser() user: JwtPayload) {
-    return this.productService.bulkUpdateShopProducts(dto, user);
   }
 }

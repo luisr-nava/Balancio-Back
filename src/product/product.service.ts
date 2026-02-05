@@ -186,66 +186,76 @@ export class ProductService {
     return `This action returns a #${id} product`;
   }
 
-  async updateShopProduct(
+  async updateProduct(
     productId: string,
-    shopId: string,
     dto: UpdateProductDto,
     user: JwtPayload,
   ) {
-    const shopProduct = await this.shopProductRepository.findOne({
-      where: { productId, shopId },
-    });
-
-    if (!shopProduct) {
-      throw new ConflictException('Producto no existe en la tienda');
+    if (!dto.shops?.length) {
+      throw new ConflictException('Debe especificar al menos una tienda');
     }
 
-    // 🔎 Barcode único por tienda
-    if (dto.barcode && dto.barcode !== shopProduct.barcode) {
-      const exists = await this.shopProductRepository.exist({
+    for (const shopDto of dto.shops) {
+      const shopProduct = await this.shopProductRepository.findOne({
         where: {
-          shopId: shopProduct.shopId,
-          barcode: dto.barcode,
+          productId,
+          shopId: shopDto.shopId,
         },
       });
 
-      if (exists) {
+      if (!shopProduct) {
         throw new ConflictException(
-          'El código de barras ya existe en la tienda',
+          `El producto no existe en la tienda ${shopDto.shopId}`,
         );
       }
+
+      // 🔎 Barcode único por tienda
+      if (shopDto.barcode && shopDto.barcode !== shopProduct.barcode) {
+        const exists = await this.shopProductRepository.exist({
+          where: {
+            shopId: shopDto.shopId,
+            barcode: shopDto.barcode,
+          },
+        });
+
+        if (exists) {
+          throw new ConflictException(
+            `El código de barras ya existe en la tienda ${shopDto.shopId}`,
+          );
+        }
+      }
+
+      // 🧾 Historial
+      await this.productHistoryRepository.save(
+        this.productHistoryRepository.create({
+          shopProductId: shopProduct.id,
+          userId: user.id,
+          changeType: dto.shops.length > 1 ? 'BULK_UPDATED' : 'UPDATED',
+          previousStock: shopProduct.stock,
+          newStock: shopDto.stock ?? shopProduct.stock,
+          previousCost: shopProduct.costPrice,
+          newCost: shopDto.costPrice ?? shopProduct.costPrice,
+          note: 'Actualización de producto',
+        }),
+      );
+
+      // ✏️ Aplicar cambios
+      Object.assign(shopProduct, {
+        costPrice: shopDto.costPrice ?? shopProduct.costPrice,
+        salePrice: shopDto.salePrice ?? shopProduct.salePrice,
+        stock: shopDto.stock ?? shopProduct.stock,
+        barcode: shopDto.barcode ?? shopProduct.barcode,
+        categoryId: shopDto.categoryId ?? shopProduct.categoryId,
+        supplierId: shopDto.supplierId ?? shopProduct.supplierId,
+      });
+
+      await this.shopProductRepository.save(shopProduct);
     }
-
-    // 🧾 Historial previo
-    const history = this.productHistoryRepository.create({
-      shopProductId: shopProduct.id,
-      userId: user.id,
-      changeType: 'UPDATED',
-      previousStock: shopProduct.stock,
-      newStock: dto.stock ?? shopProduct.stock,
-      previousCost: shopProduct.costPrice,
-      newCost: dto.costPrice ?? shopProduct.costPrice,
-      note: 'Actualización de producto',
-    });
-
-    // ✏️ Aplicar cambios
-    Object.assign(shopProduct, {
-      costPrice: dto.costPrice ?? shopProduct.costPrice,
-      salePrice: dto.salePrice ?? shopProduct.salePrice,
-      stock: dto.stock ?? shopProduct.stock,
-      barcode: dto.barcode ?? shopProduct.barcode,
-      categoryId: dto.categoryId ?? shopProduct.categoryId,
-      supplierId: dto.supplierId ?? shopProduct.supplierId,
-      isActive: dto.isActive ?? shopProduct.isActive,
-    });
-
-    await this.shopProductRepository.save(shopProduct);
-    await this.productHistoryRepository.save(history);
 
     return {
       message: 'Producto actualizado correctamente',
-      shopProductId: shopProduct.id,
-    }; 
+      affectedShops: dto.shops.map((s) => s.shopId),
+    };
   }
 
   async deleteProduct(
@@ -273,66 +283,6 @@ export class ProductService {
     return {
       message: 'Operación realizada correctamente',
       affectedShopIds: shopProducts.map((sp) => sp.shopId),
-    };
-  }
-
-  async bulkUpdateShopProducts(dto: BulkUpdateProductDto, user: JwtPayload) {
-    if (user.role !== 'OWNER') {
-      throw new ConflictException(
-        'Solo el OWNER puede actualizar múltiples tiendas',
-      );
-    }
-
-    const shopProducts = await this.shopProductRepository.find({
-      where: { id: In(dto.shopProductIds) },
-    });
-
-    if (!shopProducts.length) {
-      throw new ConflictException('No se encontraron productos');
-    }
-
-    for (const sp of shopProducts) {
-      // Barcode único por tienda
-      if (dto.barcode && dto.barcode !== sp.barcode) {
-        const exists = await this.shopProductRepository.exist({
-          where: { shopId: sp.shopId, barcode: dto.barcode },
-        });
-
-        if (exists) {
-          throw new ConflictException(
-            `Barcode duplicado en la tienda ${sp.shopId}`,
-          );
-        }
-      }
-
-      await this.productHistoryRepository.save(
-        this.productHistoryRepository.create({
-          shopProductId: sp.id,
-          userId: user.id,
-          changeType: 'BULK_UPDATED',
-          previousStock: sp.stock,
-          newStock: dto.stock ?? sp.stock,
-          previousCost: sp.costPrice,
-          newCost: dto.costPrice ?? sp.costPrice,
-          note: 'Actualización múltiple',
-        }),
-      );
-
-      Object.assign(sp, {
-        costPrice: dto.costPrice ?? sp.costPrice,
-        salePrice: dto.salePrice ?? sp.salePrice,
-        stock: dto.stock ?? sp.stock,
-        barcode: dto.barcode ?? sp.barcode,
-        categoryId: dto.categoryId ?? sp.categoryId,
-        supplierId: dto.supplierId ?? sp.supplierId,
-      });
-
-      await this.shopProductRepository.save(sp);
-    }
-
-    return {
-      message: 'Productos actualizados correctamente',
-      affected: shopProducts.length,
     };
   }
 
