@@ -46,11 +46,9 @@ export class PaymentMethod {
   @Column()
   shopId: string;
 
-  // Nombre del método (ej: "Efectivo", "Tarjeta Débito")
   @Column()
   name: string;
 
-  // Código único (ej: "CASH", "DEBIT_CARD")
   @Column()
   code: string;
 

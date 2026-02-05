@@ -14,6 +14,17 @@ type PrintableBarcode = {
   shopName: string;
 };
 
+type PrintablePriceLabel = {
+  productName: string;
+  shopName: string;
+  price: number;
+  currency: string;
+};
+
+type PriceLabelOptions = {
+  copies: number;
+};
+
 @Injectable()
 export class PrintService {
   async generateBarcodePdf(
@@ -23,7 +34,7 @@ export class PrintService {
     return new Promise<Buffer>(async (resolve, reject) => {
       try {
         const doc = new PDFDocument({
-          size: options.format === 'A4' ? 'A4' : [226, 600], // 80mm térmica
+          size: options.format === 'A4' ? 'A4' : [226, 600],
           margin: 30,
         });
 
@@ -43,6 +54,78 @@ export class PrintService {
         reject(err);
       }
     });
+  }
+
+  async generatePriceLabelsPdf(
+    items: PrintablePriceLabel[],
+    options: PriceLabelOptions,
+  ): Promise<Buffer> {
+    return new Promise<Buffer>((resolve, reject) => {
+      try {
+        const doc = new PDFDocument({
+          size: 'A4',
+          margin: 30,
+        });
+
+        const chunks: Buffer[] = [];
+        doc.on('data', (chunk) => chunks.push(chunk));
+        doc.on('end', () => resolve(Buffer.concat(chunks)));
+        doc.on('error', reject);
+
+        this.renderPriceLabelsA4(doc, items, options.copies);
+
+        doc.end();
+      } catch (err) {
+        reject(err);
+      }
+    });
+  }
+
+  private renderPriceLabelsA4(
+    doc: PDFKitDocument,
+    items: PrintablePriceLabel[],
+    copies: number,
+  ) {
+    const PAGE_WIDTH =
+      doc.page.width - doc.page.margins.left - doc.page.margins.right;
+
+    const LABEL_WIDTH = 165;
+    const LABEL_HEIGHT = 90;
+    const GAP_X = 10;
+    const GAP_Y = 10;
+
+    const COLUMNS = 3;
+
+    let x = doc.page.margins.left;
+    let y = doc.page.margins.top;
+    let col = 0;
+
+    for (const item of items) {
+      for (let c = 0; c < copies; c++) {
+        this.renderClassicPriceLabel(
+          doc,
+          item,
+          x,
+          y,
+          LABEL_WIDTH,
+          LABEL_HEIGHT,
+        );
+
+        col++;
+        x += LABEL_WIDTH + GAP_X;
+
+        if (col >= COLUMNS) {
+          col = 0;
+          x = doc.page.margins.left;
+          y += LABEL_HEIGHT + GAP_Y;
+
+          if (y + LABEL_HEIGHT > doc.page.height - doc.page.margins.bottom) {
+            doc.addPage();
+            y = doc.page.margins.top;
+          }
+        }
+      }
+    }
   }
 
   private async renderA4(
@@ -161,7 +244,69 @@ export class PrintService {
       text: barcode,
       scale: 3,
       height: 14,
-      includetext: false, 
+      includetext: false,
+    });
+  }
+
+  private renderClassicPriceLabel(
+    doc: PDFKitDocument,
+    item: PrintablePriceLabel,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+  ) {
+    doc.rect(x, y, w, h).dash(3, { space: 3 }).stroke();
+
+    // 🏪 SHOP
+    doc
+      .fontSize(12)
+      .fillColor('gray')
+      .text(item.shopName, x + 6, y + 10, {
+        width: w - 12,
+        align: 'center',
+      });
+
+    // 🏷 PRODUCT
+    doc
+      .fontSize(15)
+      .fillColor('black')
+      .text(item.productName, x + 6, y + 26, {
+        width: w - 12,
+        align: 'center',
+      });
+
+    this.drawPriceSingleLine(
+      doc,
+      `${item.currency} ${item.price.toFixed(2)}`,
+      x,
+      y + h - 34,
+      w,
+      28,
+    );
+  }
+
+  private drawPriceSingleLine(
+    doc: PDFKitDocument,
+    text: string,
+    x: number,
+    y: number,
+    width: number,
+    maxFontSize: number,
+    minFontSize = 14,
+  ) {
+    let fontSize = maxFontSize;
+    doc.fontSize(fontSize);
+
+    while (doc.widthOfString(text) > width && fontSize > minFontSize) {
+      fontSize -= 1;
+      doc.fontSize(fontSize);
+    }
+
+    doc.text(text, x, y, {
+      width,
+      align: 'center',
+      lineBreak: false,
     });
   }
 }

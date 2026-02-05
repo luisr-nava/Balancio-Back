@@ -15,6 +15,7 @@ import { PrintBarcodesDto } from './dto/print-barcodes.dto';
 import { In, Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ShopProduct } from '../entities/shop-product.entity';
+import { PrintPriceLabelsDto } from './dto/print-price-labels.dto';
 
 @Controller('print')
 export class PrintController {
@@ -80,6 +81,47 @@ export class PrintController {
     res.setHeader(
       'Content-Disposition',
       `inline; filename="barcodes-${Date.now()}.pdf"`,
+    );
+    res.setHeader('Content-Length', pdf.length);
+
+    res.end(pdf);
+  }
+
+  @Post('price-labels')
+  async printPriceLabels(
+    @Body() dto: PrintPriceLabelsDto,
+    @Res() res: Response,
+  ) {
+    const shopProducts = await this.shopProductRepository.find({
+      where: { id: In(dto.shopProductIds) },
+      relations: {
+        product: true,
+        shop: true,
+      },
+    });
+
+    if (!shopProducts.length) {
+      throw new NotFoundException(
+        'No se encontraron productos para imprimir etiquetas',
+      );
+    }
+
+    const items = shopProducts.map((sp) => ({
+      productName: sp.product.name,
+      shopName: sp.shop.name,
+      price: sp.salePrice,
+      currency: sp.currency,
+      barcode: sp.barcode,
+    }));
+
+    const pdf = await this.printService.generatePriceLabelsPdf(items, {
+      copies: dto.copies ?? 1,
+    });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `inline; filename="price-labels-${Date.now()}.pdf"`,
     );
     res.setHeader('Content-Length', pdf.length);
 
