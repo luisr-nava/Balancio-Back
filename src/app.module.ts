@@ -26,6 +26,7 @@ import { StockModule } from './stock/stock.module';
 import { SupplierModule } from './supplier/supplier.module';
 import { SupplierCategoryModule } from './supplier-category/supplier-category.module';
 import { SeedModule } from './database/seeds/seed.module';
+import { PrintModule } from './product/print/print.module';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { SeedModule } from './database/seeds/seed.module';
       inject: [ConfigService],
       useFactory: typeORMConfig,
     }),
+    PrintModule,
     SeedModule,
     AuthModule,
     EmailModule,
