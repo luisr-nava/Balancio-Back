@@ -83,6 +83,7 @@ export class MeasurementUnitService {
       id: unit.id,
       name: unit.name,
       code: unit.code,
+      isActive: unit.isActive,
       category: unit.category,
       baseUnit: unit.baseUnit,
       isBaseUnit: unit.isBaseUnit,

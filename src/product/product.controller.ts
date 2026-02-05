@@ -17,6 +17,7 @@ import { JwtAuthGuard } from '@/auth/guards/jwt-auth.guard';
 import { JwtPayload } from 'jsonwebtoken';
 import { GetUser } from '@/auth/decorators/get-user.decorators';
 import { PaginationInterceptor } from '@/common/interceptors/pagination.interceptor';
+import { BulkUpdateProductDto } from './dto/bulk-update-product.dto';
 
 @Controller('product')
 export class ProductController {
@@ -52,13 +53,30 @@ export class ProductController {
     return this.productService.findOne(+id);
   }
 
-  @Patch(':id')
-  update(@Param('id') id: string, @Body() updateProductDto: UpdateProductDto) {
-    return this.productService.update(+id, updateProductDto);
+  @UseGuards(JwtAuthGuard)
+  @Patch(':productId/shop/:shopId')
+  updateForShop(
+    @Param('productId') productId: string,
+    @Param('shopId') shopId: string,
+    @Body() dto: UpdateProductDto,
+    @GetUser() user: JwtPayload,
+  ) {
+    return this.productService.updateShopProduct(productId, shopId, dto, user);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.productService.remove(+id);
+  async remove(
+    @Param('id') id: string,
+    @Body() body: { scope?: 'ONE' | 'MULTIPLE' | 'ALL'; shopIds?: string[] },
+    @GetUser() user: JwtPayload,
+  ) {
+    return this.productService.deleteProduct(id, user, body);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('bulk')
+  bulkUpdate(@Body() dto: BulkUpdateProductDto, @GetUser() user: JwtPayload) {
+    return this.productService.bulkUpdateShopProducts(dto, user);
   }
 }

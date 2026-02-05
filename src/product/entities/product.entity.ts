@@ -21,8 +21,8 @@ export class Product {
   @Column({ type: 'text', nullable: true })
   description?: string | null;
 
-  @Column({ type: 'text', nullable: true, unique: true })
-  barcode?: string | null;
+  // @Column({ type: 'text', nullable: true, unique: true })
+  // barcode?: string | null;
 
   @Column()
   measurementUnitId: string;

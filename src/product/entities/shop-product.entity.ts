@@ -9,14 +9,9 @@ import {
 import { Product } from './product.entity';
 import { Shop } from '@/shop/entities/shop.entity';
 import { ProductHistory } from './product-history.entity';
-import { PurchaseReturnItem } from '@/purchase-return/entities/purchase-return-item.entity';
-import { ReplacementItem } from '@/purchase-return/entities/replacement-item.entity';
-import { PurchaseItem } from '@/purchase/entities/purchase-item.entity';
-import { SaleItem } from '@/sale/entities/sale-item.entity';
-import { SaleReturnItem } from '@/sale/entities/sale-return-item.entity';
-import { StockAlert } from '@/stock/entities/stock.entity';
 
 @Entity()
+@Unique(['shopId', 'barcode'])
 @Unique(['shopId', 'productId'])
 export class ShopProduct {
   @PrimaryGeneratedColumn('uuid')
@@ -69,4 +64,7 @@ export class ShopProduct {
 
   @Column({ type: 'uuid', nullable: true })
   supplierId: string | null;
+
+  @Column({ type: 'text' })
+  barcode: string;
 }

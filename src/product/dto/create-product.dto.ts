@@ -14,6 +14,10 @@ class CreateProductShopDto {
   @IsUUID()
   shopId: string;
 
+  @IsOptional()
+  @IsString()
+  barcode?: string;
+
   @IsNumber()
   costPrice: number;
 
@@ -36,7 +40,6 @@ class CreateProductShopDto {
   @IsOptional()
   @IsUUID()
   supplierId?: string;
-
 }
 
 export class CreateProductDto {
@@ -46,10 +49,6 @@ export class CreateProductDto {
   @IsOptional()
   @IsString()
   description?: string;
-
-  @IsOptional()
-  @IsString()
-  barcode?: string;
 
   @IsOptional()
   @IsString()
@@ -75,6 +74,10 @@ export class CreateProductDto {
   @IsOptional()
   @IsUUID()
   supplierId?: string;
+
+  @IsOptional()
+  @IsString()
+  barcode?: string;
 
   @Transform(({ value }) => (Array.isArray(value) ? value : [value]))
   @IsArray()
