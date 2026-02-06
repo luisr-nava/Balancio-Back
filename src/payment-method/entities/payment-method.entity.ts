@@ -35,16 +35,11 @@ import { Income } from '@/income/entities/income.entity';
 import { Expense } from '@/expense/entities/expense.entity';
 import { Purchase } from '@/purchase/entities/purchase.entity';
 import { Sale } from '@/sale/entities/sale.entity';
-
 @Entity()
-@Unique(['shopId', 'code'])
-@Index(['shopId', 'isActive'])
+@Unique(['code'])
 export class PaymentMethod {
   @PrimaryGeneratedColumn('uuid')
   id: string;
-
-  @Column()
-  shopId: string;
 
   @Column()
   name: string;
@@ -55,8 +50,14 @@ export class PaymentMethod {
   @Column({ type: 'text', nullable: true })
   description?: string | null;
 
+  @Column({ default: false })
+  isSystem: boolean;
+
+  @Column({ default: false })
+  requiresCustomer: boolean;
+
   @Column({ default: true })
-  isActive: boolean;
+  createsCashMovement: boolean;
 
   @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   createdAt: Date;
@@ -67,23 +68,4 @@ export class PaymentMethod {
     onUpdate: 'CURRENT_TIMESTAMP',
   })
   updatedAt: Date;
-
-  // Relaciones
-  @ManyToOne(() => Shop, (shop) => shop.paymentMethods)
-  shop: Shop;
-
-  @OneToMany(() => Sale, (sale) => sale.paymentMethod)
-  sales: Sale[];
-
-  @OneToMany(() => Purchase, (purchase) => purchase.paymentMethod)
-  purchases: Purchase[];
-
-  @OneToMany(() => Income, (income) => income.paymentMethod)
-  incomes: Income[];
-
-  @OneToMany(() => Expense, (expense) => expense.paymentMethod)
-  expenses: Expense[];
-
-  // @OneToMany(() => CustomerPayment, (payment) => payment.paymentMethod)
-  // customerPayments: CustomerPayment[];
 }

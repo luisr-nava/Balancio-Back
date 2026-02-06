@@ -12,10 +12,12 @@ import { normalizeShopConfig } from './utils/normalize-shop-config';
 import { UserShop, UserShopRole } from '@/auth/entities/user-shop.entity';
 import { UpdateShopDto } from './dto/update-shop.dto';
 import { BillingService } from '@/billing/billing.service';
+import { DataSource } from 'typeorm';
 
 @Injectable()
 export class ShopService {
   constructor(
+    private readonly dataSource: DataSource,
     @InjectRepository(Shop)
     private readonly shopRepository: Repository<Shop>,
     @InjectRepository(UserShop)
@@ -28,10 +30,9 @@ export class ShopService {
     }
     const countryCode = dto.countryCode.toUpperCase();
 
-    const hasActiveSubscription = await this.billingService.hasActiveSubscription(
-      user.id,
-    );
-    const maxShopsAllowed = hasActiveSubscription ? 3 : 1;
+    const hasActiveSubscription =
+      await this.billingService.hasActiveSubscription(user.id);
+    const maxShopsAllowed = hasActiveSubscription ? 5 : 3;
 
     const shopCount = await this.shopRepository.count({
       where: { ownerId: user.id },
@@ -48,26 +49,34 @@ export class ShopService {
       countryCode,
       currencyCode: dto.currencyCode,
     });
-    const shop = this.shopRepository.create({
-      ...dto,
-      ownerId: user.id,
-      countryCode,
-      currency: currency,
-      timezone,
+
+    const result = await this.dataSource.transaction(async (manager) => {
+      // 1️⃣ Crear shop
+      const shop = manager.create(Shop, {
+        ...dto,
+        ownerId: user.id,
+        countryCode,
+        currency,
+        timezone,
+      });
+
+      await manager.save(shop);
+
+      // 2️⃣ Relación usuario–tienda
+      await manager.save(
+        manager.create(UserShop, {
+          userId: user.id,
+          shopId: shop.id,
+          role: UserShopRole.OWNER,
+        }),
+      );
+
+      return shop;
     });
 
-    await this.shopRepository.save(shop);
-
-    await this.userShopRepository.save(
-      this.userShopRepository.create({
-        userId: user.id,
-        shopId: shop.id,
-        role: UserShopRole.OWNER, // o OWNER si querés diferenciar
-      }),
-    );
     return {
       message: 'Tienda creada correctamente',
-      shop,
+      shop: result,
     };
   }
 
