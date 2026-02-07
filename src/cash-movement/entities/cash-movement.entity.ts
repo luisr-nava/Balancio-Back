@@ -5,12 +5,12 @@ import {
   ManyToOne,
   Index,
 } from 'typeorm';
-import { CashMovementType, CashRegister } from './cash-register.entity';
 import { Expense } from '@/expense/entities/expense.entity';
 import { Income } from '@/income/entities/income.entity';
 import { Purchase } from '@/purchase/entities/purchase.entity';
 import { SaleReturn } from '@/sale/entities/sale-return.entity';
 import { Sale } from '@/sale/entities/sale.entity';
+import { CashMovementType } from '@/cash-register/entities/cash-register.entity';
 
 @Entity()
 @Index(['cashRegisterId', 'createdAt'])

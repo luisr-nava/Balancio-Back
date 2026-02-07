@@ -216,19 +216,17 @@ export class PaymentMethodService {
     });
 
     // 9️⃣ Paginación en memoria
-    const total = data.length;
-    const totalPages = Math.ceil(total / limit);
     const start = (page - 1) * limit;
     const end = start + limit;
+    const total = data.length;
 
     return {
-      message: 'Métodos de pago',
       data: data.slice(start, end),
-      meta: {
+      pagination: {
+        total,
         page,
         limit,
-        total,
-        totalPages,
+        totalPages: Math.ceil(total / limit),
       },
     };
   }

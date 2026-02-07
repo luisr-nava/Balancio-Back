@@ -10,9 +10,6 @@ export class OpenCashRegisterDto {
   @IsUUID()
   shopId: string;
 
-  @IsUUID()
-  employeeId: string;
-
   @IsNumber()
   @IsPositive()
   openingAmount: number;

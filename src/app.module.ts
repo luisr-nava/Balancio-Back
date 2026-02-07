@@ -27,6 +27,7 @@ import { SupplierModule } from './supplier/supplier.module';
 import { SupplierCategoryModule } from './supplier-category/supplier-category.module';
 import { SeedModule } from './database/seeds/seed.module';
 import { PrintModule } from './product/print/print.module';
+import { CashMovementModule } from './cash-movement/cash-movement.module';
 
 @Module({
   imports: [
@@ -60,6 +61,7 @@ import { PrintModule } from './product/print/print.module';
     StockModule,
     SupplierModule,
     SupplierCategoryModule,
+    CashMovementModule,
   ],
   controllers: [],
   providers: [],

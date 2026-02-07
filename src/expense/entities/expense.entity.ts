@@ -8,8 +8,8 @@ import {
   JoinColumn,
 } from 'typeorm';
 import { Shop } from '@/shop/entities/shop.entity';
-import { CashMovement } from '@/cash-register/entities/cash-movement.entity';
 import { PaymentMethod } from '@/payment-method/entities/payment-method.entity';
+import { CashMovement } from '@/cash-movement/entities/cash-movement.entity';
 
 @Entity()
 @Index(['paymentMethodId'])

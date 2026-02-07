@@ -14,7 +14,7 @@ import { Supplier } from '@/supplier/entities/supplier.entity';
 import { PaymentMethod } from '@/payment-method/entities/payment-method.entity';
 import { PurchaseItem } from './purchase-item.entity';
 import { CreditNoteApplication } from '@/purchase-return/entities/credit-note-application.entity';
-import { CashMovement } from '@/cash-register/entities/cash-movement.entity';
+import { CashMovement } from '@/cash-movement/entities/cash-movement.entity';
 
 @Entity()
 @Index(['paymentMethodId'])

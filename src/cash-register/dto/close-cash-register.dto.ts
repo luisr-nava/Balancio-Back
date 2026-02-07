@@ -12,6 +12,4 @@ export class CloseCashRegisterDto {
   @IsString()
   closingNotes?: string;
 
-  @IsUUID()
-  closedBy: string;
 }

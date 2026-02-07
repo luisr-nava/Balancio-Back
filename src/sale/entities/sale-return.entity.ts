@@ -10,7 +10,7 @@ import { RefundType, Sale, SaleReturnStatus } from './sale.entity';
 import { Shop } from '@/shop/entities/shop.entity';
 import { SaleReturnItem } from './sale-return-item.entity';
 import { PurchaseReturn } from '@/purchase-return/entities/purchase-return.entity';
-import { CashMovement } from '@/cash-register/entities/cash-movement.entity';
+import { CashMovement } from '@/cash-movement/entities/cash-movement.entity';
 
 @Entity()
 export class SaleReturn {

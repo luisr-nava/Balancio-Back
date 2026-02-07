@@ -53,13 +53,13 @@ import {
 } from 'typeorm';
 import { Shop } from '@/shop/entities/shop.entity';
 import { User } from '@/auth/entities/user.entity';
-import { CashMovement } from '@/cash-register/entities/cash-movement.entity';
 import { Customer } from '@/customer/entities/customer.entity';
 import { PaymentMethod } from '@/payment-method/entities/payment-method.entity';
 import { SaleHistory } from './sale-history.entity';
 import { SaleItemHistory } from './sale-item-history.entity';
 import { SaleItem } from './sale-item.entity';
 import { SaleReturn } from './sale-return.entity';
+import { CashMovement } from '@/cash-movement/entities/cash-movement.entity';
 @Entity()
 @Index(['shopId', 'saleDate'])
 @Index(['customerId', 'saleDate'])
