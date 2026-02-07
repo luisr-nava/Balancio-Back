@@ -3,7 +3,7 @@ import { CreateExpenseDto } from './dto/create-expense.dto';
 import { UpdateExpenseDto } from './dto/update-expense.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Expense } from './entities/expense.entity';
-import { Repository } from 'typeorm';
+import { Between, FindOptionsWhere, Repository } from 'typeorm';
 import { CashRegisterService } from '@/cash-register/cash-register.service';
 import { CashMovementType } from '@/cash-register/entities/cash-register.entity';
 import { JwtPayload } from 'jsonwebtoken';
@@ -63,19 +63,163 @@ export class ExpenseService {
     return { message: 'Egreso creado correctamente', expense: expense };
   }
 
-  findAll() {
-    return `This action returns all expense`;
+  async update(id: string, dto: UpdateExpenseDto, user: JwtPayload) {
+    // 1️⃣ Buscar expense con su movimiento
+    const expense = await this.expenseRepo.findOne({
+      where: { id },
+      relations: {
+        cashMovement: true,
+      },
+    });
+
+    if (!expense) {
+      throw new BadRequestException('Egreso no encontrado');
+    }
+
+    // 2️⃣ Validar autor
+    if (expense.createdBy !== user.id) {
+      throw new BadRequestException(
+        'No tienes permiso para modificar este egreso',
+      );
+    }
+
+    // 3️⃣ Validar caja asociada
+    if (!expense.cashMovement?.cashRegisterId) {
+      throw new BadRequestException('El egreso no está asociado a una caja');
+    }
+
+    const cashRegister = await this.cashRegisterService.getById(
+      expense.cashMovement.cashRegisterId,
+    );
+
+    if (!cashRegister) {
+      throw new BadRequestException('Caja no encontrada');
+    }
+
+    // 🔒 REGLA CLAVE
+    if (cashRegister.status === 'CLOSED') {
+      throw new BadRequestException(
+        'No se puede modificar un egreso de una caja cerrada',
+      );
+    }
+
+    // 4️⃣ Update permitido (caja abierta)
+    this.expenseRepo.merge(expense, {
+      description: dto.description ?? expense.description,
+      category: dto.category ?? expense.category,
+      date: dto.date ? new Date(dto.date) : expense.date,
+    });
+
+    await this.expenseRepo.save(expense);
+
+    return {
+      message: 'Egreso actualizado correctamente',
+      expense,
+    };
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} expense`;
+  async getAll(
+    filters: {
+      shopId?: string;
+      fromDate?: string;
+      toDate?: string;
+      category?: string;
+      page?: string;
+      limit?: string;
+    },
+    user: JwtPayload,
+  ) {
+    const page = Number(filters.page ?? 1);
+    const limit = Number(filters.limit ?? 20);
+    const skip = (page - 1) * limit;
+
+    const where: FindOptionsWhere<Expense> = {};
+
+    // 1️⃣ Filtro por tienda (obligatorio a nivel negocio)
+    if (filters.shopId) {
+      where.shopId = filters.shopId;
+    }
+
+    // 2️⃣ Filtro por categoría
+    if (filters.category) {
+      where.category = filters.category;
+    }
+
+    // 3️⃣ Filtro por fechas
+    if (filters.fromDate && filters.toDate) {
+      where.date = Between(
+        new Date(filters.fromDate),
+        new Date(filters.toDate),
+      );
+    }
+
+    // 4️⃣ Query paginada
+    const [expenses, total] = await this.expenseRepo.findAndCount({
+      where,
+      order: {
+        date: 'DESC',
+      },
+      skip,
+      take: limit,
+    });
+
+    return {
+      data: expenses.map((expense) => ({
+        id: expense.id,
+        shopId: expense.shopId,
+        paymentMethodId: expense.paymentMethodId,
+        amount: expense.amount,
+        description: expense.description,
+        category: expense.category,
+        date: expense.date,
+        createdBy: expense.createdBy,
+      })),
+      total,
+    };
   }
 
-  update(id: number, updateExpenseDto: UpdateExpenseDto) {
-    return `This action updates a #${id} expense`;
-  }
+  async remove(id: string, user: JwtPayload) {
+    const expense = await this.expenseRepo.findOne({
+      where: { id },
+      relations: { cashMovement: true },
+    });
 
-  remove(id: number) {
-    return `This action removes a #${id} expense`;
+    if (!expense) {
+      throw new BadRequestException('Egreso no encontrado');
+    }
+
+    if (expense.createdBy !== user.id) {
+      throw new BadRequestException(
+        'No tienes permiso para eliminar este egreso',
+      );
+    }
+
+    if (!expense.cashMovement?.cashRegisterId) {
+      throw new BadRequestException('El egreso no está asociado a una caja');
+    }
+
+    const cashRegister = await this.cashRegisterService.getById(
+      expense.cashMovement.cashRegisterId,
+    );
+
+    if (!cashRegister || cashRegister.status === 'CLOSED') {
+      throw new BadRequestException(
+        'No se puede eliminar un egreso de una caja cerrada',
+      );
+    }
+
+    const movementId = expense.cashMovement.id;
+
+    // 🔓 1️⃣ romper FK
+    expense.cashMovement = null;
+    await this.expenseRepo.save(expense);
+
+    // 🔥 2️⃣ borrar movement
+    await this.cashMovementService.remove(movementId);
+
+    // 🧹 3️⃣ borrar expense
+    await this.expenseRepo.remove(expense);
+
+    return { message: 'Egreso eliminado correctamente' };
   }
 }

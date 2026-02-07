@@ -306,4 +306,8 @@ export class CashRegisterService {
       }
     }, 0);
   }
+
+  async getById(id: string) {
+    return this.repo.findOne({ where: { id } });
+  }
 }
