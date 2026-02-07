@@ -108,7 +108,20 @@ export class ExpenseService {
       description: dto.description ?? expense.description,
       category: dto.category ?? expense.category,
       date: dto.date ? new Date(dto.date) : expense.date,
+      amount: dto.amount ?? expense.amount,
     });
+
+    // 🔁 si cambia el amount → actualizar cash movement
+    if (
+      dto.amount !== undefined &&
+      expense.cashMovement.amount !== dto.amount
+    ) {
+      expense.cashMovement.amount = dto.amount;
+      await this.cashMovementService.updateAmount(
+        expense.cashMovement.id,
+        dto.amount,
+      );
+    }
 
     await this.expenseRepo.save(expense);
 

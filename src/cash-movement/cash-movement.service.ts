@@ -55,4 +55,7 @@ export class CashMovementService {
 
     await this.repo.remove(movement);
   }
+  async updateAmount(id: string, amount: number) {
+    await this.repo.update(id, { amount });
+  }
 }
