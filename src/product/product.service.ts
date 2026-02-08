@@ -6,7 +6,10 @@ import { In, IsNull, Not, Repository } from 'typeorm';
 import { Product } from './entities/product.entity';
 import { ShopProduct } from './entities/shop-product.entity';
 import { JwtPayload } from 'jsonwebtoken';
-import { ProductHistory } from './entities/product-history.entity';
+import {
+  ProductHistory,
+  ProductHistoryChangeType,
+} from './entities/product-history.entity';
 import { MeasurementUnit } from '@/measurement-unit/entities/measurement-unit.entity';
 import { Shop } from '@/shop/entities/shop.entity';
 import { BulkUpdateProductDto } from './dto/bulk-update-product.dto';
@@ -93,9 +96,9 @@ export class ProductService {
 
       await this.productHistoryRepository.save(
         this.productHistoryRepository.create({
-          shopProductId: savedShopProduct.id,
+          shopProduct: { id: savedShopProduct.id },
           userId: user.id,
-          changeType: 'CREATED',
+          changeType: ProductHistoryChangeType.CREATED,
           previousStock: null,
           newStock: shop.stock ?? null,
           note: 'Producto creado',
@@ -228,9 +231,9 @@ export class ProductService {
       // 🧾 Historial
       await this.productHistoryRepository.save(
         this.productHistoryRepository.create({
-          shopProductId: shopProduct.id,
+          shopProduct: { id: shopProduct.id },
           userId: user.id,
-          changeType: dto.shops.length > 1 ? 'BULK_UPDATED' : 'UPDATED',
+          changeType: ProductHistoryChangeType.UPDATED,
           previousStock: shopProduct.stock,
           newStock: shopDto.stock ?? shopProduct.stock,
           previousCost: shopProduct.costPrice,
@@ -370,16 +373,16 @@ export class ProductService {
   private async hasSales(shopProductId: string): Promise<boolean> {
     return this.productHistoryRepository.exist({
       where: {
-        shopProductId,
-        changeType: 'SALE',
+        shopProduct: { id: shopProductId },
+        changeType: ProductHistoryChangeType.SALE,
       },
     });
   }
   private async hasMeaningfulHistory(shopProductId: string): Promise<boolean> {
     return this.productHistoryRepository.exist({
       where: {
-        shopProductId,
-        changeType: Not('CREATED'),
+        shopProduct: { id: shopProductId },
+        changeType: Not(ProductHistoryChangeType.CREATED),
       },
     });
   }
@@ -404,14 +407,16 @@ export class ProductService {
         this.productHistoryRepository.create({
           shopProductId,
           userId: user.id,
-          changeType: 'DEACTIVATED',
+          changeType: ProductHistoryChangeType.DEACTIVATED,
           note: 'Producto desactivado (ventas asociadas)',
         }),
       );
 
       return;
     }
-    await this.productHistoryRepository.delete({ shopProductId });
+    await this.productHistoryRepository.delete({
+      shopProduct: { id: shopProductId },
+    });
     await this.shopProductRepository.delete(shopProductId);
   }
 }

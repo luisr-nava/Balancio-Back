@@ -1,6 +1,8 @@
-import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, Index } from 'typeorm';
 
 @Entity()
+@Index(['shopId'])
+@Index(['deletedAt'])
 export class PurchaseDeletionHistory {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -31,7 +33,7 @@ export class PurchaseDeletionHistory {
 
   // Datos de la eliminación
   @Column()
-  deletedBy: string;
+  deletedByUserId: string;
 
   @Column()
   deletedByEmail: string;
@@ -43,6 +45,17 @@ export class PurchaseDeletionHistory {
   deletionReason: string;
 
   // Snapshot JSON
-  @Column({ type: 'text' })
-  itemsSnapshot: string;
+  @Column({ type: 'jsonb' })
+  itemsSnapshot: {
+    items: {
+      shopProductId: string;
+      productName: string;
+      quantity: number;
+      unitCost: number;
+      subtotal: number;
+    }[];
+    totals?: {
+      totalAmount?: number | null;
+    };
+  };
 }

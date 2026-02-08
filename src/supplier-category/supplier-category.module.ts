@@ -9,5 +9,6 @@ import { SupplierCategory } from './entities/supplier-category.entity';
   imports: [TypeOrmModule.forFeature([SupplierCategory]), ShopModule],
   controllers: [SupplierCategoryController],
   providers: [SupplierCategoryService],
+  exports: [SupplierCategoryModule],
 })
 export class SupplierCategoryModule {}

@@ -1,4 +1,10 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  ManyToOne,
+  JoinColumn,
+} from 'typeorm';
 import { Purchase } from './purchase.entity';
 import { ShopProduct } from '@/product/entities/shop-product.entity';
 
@@ -7,11 +13,13 @@ export class PurchaseItem {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column()
-  purchaseId: string;
+  @ManyToOne(() => Purchase)
+  @JoinColumn({ name: 'purchaseId' })
+  purchase: Purchase;
 
-  @Column()
-  shopProductId: string;
+  @ManyToOne(() => ShopProduct)
+  @JoinColumn({ name: 'shopProductId' })
+  shopProduct: ShopProduct;
 
   @Column()
   quantity: number;
@@ -21,10 +29,4 @@ export class PurchaseItem {
 
   @Column('float')
   subtotal: number;
-
-  @ManyToOne(() => Purchase)
-  purchase: Purchase;
-
-  @ManyToOne(() => ShopProduct)
-  shopProduct: ShopProduct;
 }

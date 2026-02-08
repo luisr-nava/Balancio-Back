@@ -7,6 +7,7 @@ import { Repository } from 'typeorm';
 import { ShopService } from '@/shop/shop.service';
 import { JwtPayload } from 'jsonwebtoken';
 import { SupplierShop } from './entities/supplier-shop.entity';
+import { SupplierCategory } from '@/supplier-category/entities/supplier-category.entity';
 
 @Injectable()
 export class SupplierService {
@@ -15,6 +16,8 @@ export class SupplierService {
     private readonly supplierRepository: Repository<Supplier>,
     @InjectRepository(SupplierShop)
     private readonly supplierShopRepository: Repository<SupplierShop>,
+    @InjectRepository(SupplierCategory)
+    private readonly supplierCategoryRepo: Repository<SupplierCategory>,
   ) {}
 
   async create(createSupplierDto: CreateSupplierDto, user: JwtPayload) {
@@ -28,12 +31,24 @@ export class SupplierService {
       );
     }
 
-    const supplier = await this.supplierRepository.create({
+    let category = null;
+
+    if (createSupplierDto.categoryId) {
+      category = await this.supplierCategoryRepo.findOne({
+        where: {
+          id: createSupplierDto.categoryId,
+        },
+      });
+
+      if (!category) {
+        throw new ConflictException('La categoría de proveedor no existe');
+      }
+    }
+
+    const supplier = this.supplierRepository.create({
       name: createSupplierDto.name,
       ownerId: user.ownerId || user.id,
-      category: createSupplierDto.categoryId
-        ? { id: createSupplierDto.categoryId }
-        : null,
+      category,
       contactName: createSupplierDto.contactName,
       phone: createSupplierDto.phone,
       email: createSupplierDto.email,

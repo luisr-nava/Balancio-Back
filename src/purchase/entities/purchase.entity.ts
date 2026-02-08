@@ -6,6 +6,7 @@ import {
   OneToMany,
   OneToOne,
   Index,
+  JoinColumn,
 } from 'typeorm';
 import { Shop } from '@/shop/entities/shop.entity';
 import { PurchaseStatus } from '@/purchase-return/entities/purchase-return.entity';
@@ -18,12 +19,11 @@ import { CashMovement } from '@/cash-movement/entities/cash-movement.entity';
 
 @Entity()
 @Index(['paymentMethodId'])
+@Index(['shopId', 'purchaseDate'])
+@Index(['status'])
 export class Purchase {
   @PrimaryGeneratedColumn('uuid')
   id: string;
-
-  @Column({ nullable: true })
-  supplierId?: string | null;
 
   @Column()
   shopId: string;
@@ -63,6 +63,7 @@ export class Purchase {
   shop: Shop;
 
   @ManyToOne(() => Supplier, { nullable: true })
+  @JoinColumn({ name: 'supplierId' })
   supplier?: Supplier | null;
 
   @ManyToOne(() => PaymentMethod)

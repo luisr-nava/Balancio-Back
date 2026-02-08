@@ -5,9 +5,13 @@ import { Supplier } from './entities/supplier.entity';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ShopModule } from '@/shop/shop.module';
 import { SupplierShop } from './entities/supplier-shop.entity';
+import { SupplierCategory } from '@/supplier-category/entities/supplier-category.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Supplier, SupplierShop]), ShopModule],
+  imports: [
+    TypeOrmModule.forFeature([Supplier, SupplierShop, SupplierCategory]),
+    ShopModule,
+  ],
   controllers: [SupplierController],
   providers: [SupplierService],
 })
