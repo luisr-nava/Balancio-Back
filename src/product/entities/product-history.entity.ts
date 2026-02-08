@@ -9,6 +9,7 @@ export enum ProductHistoryChangeType {
   DEACTIVATED = 'DEACTIVATED',
   PURCHASE = 'PURCHASE',
   SALE = 'SALE',
+  CANCEL_PURCHASE = 'CANCEL_PURCHASE',
 }
 
 @Entity()

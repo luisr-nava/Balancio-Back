@@ -17,6 +17,7 @@ import { JwtAuthGuard } from '@/auth/guards/jwt-auth.guard';
 import { GetUser } from '@/auth/decorators/get-user.decorators';
 import { JwtPayload } from 'jsonwebtoken';
 import { PaginationInterceptor } from '@/common/interceptors/pagination.interceptor';
+import { CancelPurchaseDto } from './dto/cancel-purchase.dto';
 
 @Controller('purchase')
 export class PurchaseController {
@@ -54,17 +55,23 @@ export class PurchaseController {
     );
   }
 
-
+  @UseGuards(JwtAuthGuard)
   @Patch(':id')
   update(
     @Param('id') id: string,
-    @Body() updatePurchaseDto: UpdatePurchaseDto,
+    @Body() dto: UpdatePurchaseDto,
+    @GetUser() user: JwtPayload,
   ) {
-    return this.purchaseService.update(+id, updatePurchaseDto);
+    return this.purchaseService.update(id, dto, user);
   }
 
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.purchaseService.remove(+id);
+  @UseGuards(JwtAuthGuard)
+  @Patch(':id/cancel')
+  cancel(
+    @Param('id') id: string,
+    @Body() dto: CancelPurchaseDto,
+    @GetUser() user: JwtPayload,
+  ) {
+    return this.purchaseService.cancelPurchase(id, dto, user);
   }
 }

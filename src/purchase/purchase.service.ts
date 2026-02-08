@@ -21,6 +21,7 @@ import { JwtPayload } from 'jsonwebtoken';
 import { CashRegisterStatus } from '@/cash-register/enums/cash-register-status.enum';
 import { CashMovementService } from '@/cash-movement/cash-movement.service';
 import { CashRegisterService } from '@/cash-register/cash-register.service';
+import { CancelPurchaseDto } from './dto/cancel-purchase.dto';
 
 @Injectable()
 export class PurchaseService {
@@ -168,11 +169,9 @@ export class PurchaseService {
   ) {
     const page = filters.page ?? 1;
     const limit = filters.limit ?? 20;
-    const skip = (page - 1) * limit;
 
     const where: any = {};
 
-    // 🔐 reglas por rol (resumido)
     if (user.role === 'EMPLOYEE') {
       where.createdBy = user.id;
     } else if (filters.shopId) {
@@ -198,10 +197,8 @@ export class PurchaseService {
           },
         },
       },
-      order: {
-        purchaseDate: 'DESC',
-      },
-      skip,
+      order: { purchaseDate: 'DESC' },
+      skip: (page - 1) * limit,
       take: limit,
     });
 
@@ -228,15 +225,212 @@ export class PurchaseService {
     };
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} purchase`;
+  async update(id: string, dto: UpdatePurchaseDto, user: JwtPayload) {
+    return this.dataSource.transaction(async (manager) => {
+      const purchase = await manager.findOne(Purchase, {
+        where: { id },
+      });
+
+      if (!purchase) {
+        throw new BadRequestException('Compra no encontrada');
+      }
+
+      const cashMovement = await manager.findOne(CashMovement, {
+        where: { purchaseId: purchase.id },
+      });
+
+      if (!cashMovement) {
+        throw new BadRequestException('La compra no está asociada a una caja');
+      }
+
+      const cashRegister = await this.cashRegisterService.getById(
+        cashMovement.cashRegisterId,
+      );
+
+      if (!cashRegister) {
+        throw new BadRequestException('Caja no encontrada');
+      }
+
+      if (cashRegister.status === CashRegisterStatus.CLOSED) {
+        throw new BadRequestException(
+          'No se puede modificar una compra de una caja cerrada',
+        );
+      }
+
+      // 🔥 1️⃣ Revertir stock + borrar items anteriores (POR FK)
+      const previousItems = await manager.find(PurchaseItem, {
+        where: { purchase: { id: purchase.id } },
+        relations: { shopProduct: true },
+      });
+
+      for (const item of previousItems) {
+        item.shopProduct.stock! -= item.quantity;
+        await manager.save(item.shopProduct);
+      }
+
+      await manager.delete(PurchaseItem, {
+        purchase: { id: purchase.id },
+      });
+
+      // 🔁 2️⃣ Crear nuevos items
+      let totalAmount = 0;
+
+      for (const item of dto.items ?? []) {
+        const shopProduct = await manager.findOne(ShopProduct, {
+          where: { id: item.shopProductId, shopId: purchase.shopId },
+        });
+
+        if (!shopProduct) {
+          throw new BadRequestException(
+            `Producto ${item.shopProductId} no encontrado`,
+          );
+        }
+
+        const subtotal = item.quantity * item.unitCost;
+        totalAmount += subtotal;
+
+        await manager.save(
+          manager.create(PurchaseItem, {
+            purchase: { id: purchase.id }, // ✅ FK explícita
+            shopProduct: { id: shopProduct.id },
+            quantity: item.quantity,
+            unitCost: item.unitCost,
+            subtotal,
+          }),
+        );
+
+        const previousStock = shopProduct.stock!;
+        shopProduct.stock! += item.quantity;
+        await manager.save(shopProduct);
+
+        await manager.save(
+          manager.create(ProductHistory, {
+            shopProduct: { id: shopProduct.id },
+            purchase: { id: purchase.id },
+            userId: user.id,
+            changeType: ProductHistoryChangeType.PURCHASE,
+            previousStock,
+            newStock: shopProduct.stock,
+            previousCost: shopProduct.costPrice,
+            newCost: item.unitCost,
+            note: 'Actualización de compra',
+          }),
+        );
+      }
+
+      // ✏️ 3️⃣ Update campos simples
+      purchase.notes = dto.notes ?? purchase.notes;
+      purchase.purchaseDate = dto.purchaseDate
+        ? new Date(dto.purchaseDate)
+        : purchase.purchaseDate;
+      purchase.totalAmount = totalAmount;
+
+      await manager.save(purchase);
+
+      // 💰 4️⃣ Sync cash movement
+      if (cashMovement.amount !== totalAmount) {
+        cashMovement.amount = totalAmount;
+        await manager.save(cashMovement);
+      }
+
+      return {
+        message: 'Compra actualizada correctamente',
+        purchaseId: purchase.id,
+      };
+    });
   }
 
-  update(id: number, updatePurchaseDto: UpdatePurchaseDto) {
-    return `This action updates a #${id} purchase`;
-  }
+  async cancelPurchase(
+    purchaseId: string,
+    dto: CancelPurchaseDto,
+    user: JwtPayload,
+  ) {
+    return this.dataSource.transaction(async (manager) => {
+      const purchase = await manager.findOne(Purchase, {
+        where: { id: purchaseId },
+        relations: {
+          items: {
+            shopProduct: true,
+          },
+        },
+      });
 
-  remove(id: number) {
-    return `This action removes a #${id} purchase`;
+      if (!purchase) {
+        throw new BadRequestException('Compra no encontrada');
+      }
+
+      if (purchase.status === PurchaseStatus.CANCELLED) {
+        throw new BadRequestException('La compra ya está cancelada');
+      }
+
+      const cashMovement = await manager.findOne(CashMovement, {
+        where: { purchaseId: purchase.id },
+      });
+
+      if (!cashMovement) {
+        throw new BadRequestException(
+          'La compra no tiene movimiento de caja asociado',
+        );
+      }
+
+      const cashRegister = await this.cashRegisterService.getById(
+        cashMovement.cashRegisterId,
+      );
+
+      if (!cashRegister) {
+        throw new BadRequestException('Caja no encontrada');
+      }
+
+      if (cashRegister.status === CashRegisterStatus.CLOSED) {
+        throw new BadRequestException(
+          'No se puede cancelar una compra de una caja cerrada',
+        );
+      }
+
+      // 🔁 1️⃣ Revertir stock
+      for (const item of purchase.items) {
+        const product = item.shopProduct;
+
+        const previousStock = product.stock!;
+        product.stock! -= item.quantity;
+
+        if (product.stock! < 0) {
+          throw new BadRequestException(
+            `Stock inválido al cancelar (${product.id})`,
+          );
+        }
+
+        await manager.save(product);
+
+        await manager.save(
+          manager.create(ProductHistory, {
+            shopProduct: { id: product.id },
+            purchase: { id: purchase.id },
+            userId: user.id,
+            changeType: ProductHistoryChangeType.CANCEL_PURCHASE,
+            previousStock,
+            newStock: product.stock,
+            previousCost: product.costPrice,
+            newCost: product.costPrice,
+            note: `Cancelación de compra: ${dto.reason}`,
+          }),
+        );
+      }
+
+      // 🧾 2️⃣ Marcar compra como cancelada
+      purchase.status = PurchaseStatus.CANCELLED;
+      purchase.cancelledAt = new Date();
+      purchase.cancelledBy = user.id;
+      purchase.cancellationReason = dto.reason;
+
+      await manager.save(purchase);
+
+      // 🚫 3️⃣ NO tocar cash movement (queda como evidencia)
+
+      return {
+        message: 'Compra cancelada correctamente',
+        purchaseId: purchase.id,
+      };
+    });
   }
 }
