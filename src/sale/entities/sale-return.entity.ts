@@ -4,66 +4,46 @@ import {
   Column,
   ManyToOne,
   OneToMany,
-  OneToOne,
 } from 'typeorm';
-import { RefundType, Sale, SaleReturnStatus } from './sale.entity';
-import { Shop } from '@/shop/entities/shop.entity';
+import { Sale } from './sale.entity';
 import { SaleReturnItem } from './sale-return-item.entity';
-import { PurchaseReturn } from '@/purchase-return/entities/purchase-return.entity';
-import { CashMovement } from '@/cash-movement/entities/cash-movement.entity';
+
+export enum SaleReturnStatus {
+  PENDING = 'PENDING',
+  APPROVED = 'APPROVED',
+  REJECTED = 'REJECTED',
+  PROCESSED = 'PROCESSED',
+}
+
+export enum RefundType {
+  CASH = 'CASH',
+  CREDIT = 'CREDIT',
+  EXCHANGE = 'EXCHANGE',
+}
 
 @Entity()
 export class SaleReturn {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ type: 'text', nullable: true })
-  saleId?: string | null;
-
   @Column()
-  shopId: string;
+  saleId: string;
 
-  @Column('float')
-  totalAmount: number;
-
-  @Column()
-  reason: string;
-
-  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
-  returnDate: Date;
-
-  @Column({
-    type: 'enum',
-    enum: SaleReturnStatus,
-    default: SaleReturnStatus.PENDING,
-  })
+  @Column({ type: 'enum', enum: SaleReturnStatus })
   status: SaleReturnStatus;
 
-  @Column({
-    type: 'enum',
-    enum: RefundType,
-    default: RefundType.CASH,
-  })
+  @Column({ type: 'enum', enum: RefundType })
   refundType: RefundType;
 
-  @Column('float')
-  refundAmount: number;
+  @Column({ nullable: true })
+  reason?: string;
 
-  @Column({ type: 'text', nullable: true })
-  notes?: string | null;
-
-  @ManyToOne(() => Sale, { nullable: true })
-  sale?: Sale | null;
-
-  @ManyToOne(() => Shop)
-  shop: Shop;
+  @ManyToOne(() => Sale)
+  sale: Sale;
 
   @OneToMany(() => SaleReturnItem, (item) => item.saleReturn)
   items: SaleReturnItem[];
 
-  @OneToMany(() => PurchaseReturn, (pr) => pr.saleReturn)
-  purchaseReturns: PurchaseReturn[];
-
-  @OneToOne(() => CashMovement, { nullable: true })
-  cashMovement?: CashMovement | null;
+  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
+  createdAt: Date;
 }

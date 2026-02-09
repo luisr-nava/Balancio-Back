@@ -93,9 +93,6 @@ export class Shop {
   @OneToMany(() => SupplierCategory, (sc) => sc.shop)
   supplierCategories: SupplierCategory[];
 
-  @OneToMany(() => SaleReturn, (sr) => sr.shop)
-  saleReturns: SaleReturn[];
-
   @OneToMany(() => PurchaseReturn, (pr) => pr.shop)
   purchaseReturns: PurchaseReturn[];
 

@@ -1,7 +1,9 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, Index } from 'typeorm';
 import { Sale } from './sale.entity';
 import { ShopProduct } from '@/product/entities/shop-product.entity';
 
+@Index(['saleId'])
+@Index(['shopProductId'])
 @Entity()
 export class SaleItem {
   @PrimaryGeneratedColumn('uuid')
@@ -14,12 +16,12 @@ export class SaleItem {
   shopProductId: string;
 
   @Column('decimal', { precision: 18, scale: 6 })
-  quantity: string;
+  quantity: string; // balanza friendly
 
-  @Column('float')
+  @Column({ type: 'decimal', precision: 12, scale: 2 })
   unitPrice: number;
 
-  @Column('float')
+  @Column({ type: 'decimal', precision: 12, scale: 2 })
   subtotal: number;
 
   @Column('float', { default: 0 })
@@ -33,6 +35,9 @@ export class SaleItem {
 
   @Column('float')
   total: number;
+
+  @Column({ default: false })
+  priceWasModified: boolean;
 
   @ManyToOne(() => Sale, { onDelete: 'CASCADE' })
   sale: Sale;

@@ -1,14 +1,7 @@
-import {
-  Entity,
-  PrimaryGeneratedColumn,
-  Column,
-  ManyToOne,
-  Index,
-} from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne } from 'typeorm';
 import { Sale } from './sale.entity';
 
 @Entity()
-@Index(['saleId'])
 export class SaleItemHistory {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -19,18 +12,12 @@ export class SaleItemHistory {
   @Column()
   shopProductId: string;
 
-  @Column()
-  previousQty: number;
+  @Column({ type: 'jsonb' })
+  snapshot: any;
 
-  @Column()
-  newQty: number;
+  @ManyToOne(() => Sale)
+  sale: Sale;
 
   @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
-  changedAt: Date;
-
-  @Column({ type: 'text', nullable: true })
-  changedBy?: string | null;
-
-  @ManyToOne(() => Sale, { onDelete: 'CASCADE' })
-  sale: Sale;
+  createdAt: Date;
 }

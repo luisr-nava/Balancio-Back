@@ -1,3 +1,23 @@
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  ManyToOne,
+  OneToMany,
+  OneToOne,
+  Index,
+  JoinColumn,
+} from 'typeorm';
+import { Shop } from '@/shop/entities/shop.entity';
+import { User } from '@/auth/entities/user.entity';
+import { Customer } from '@/customer/entities/customer.entity';
+import { PaymentMethod } from '@/payment-method/entities/payment-method.entity';
+import { SaleItem } from './sale-item.entity';
+import { SaleHistory } from './sale-history.entity';
+import { SaleItemHistory } from './sale-item-history.entity';
+import { SaleReturn } from './sale-return.entity';
+import { CashMovement } from '@/cash-movement/entities/cash-movement.entity';
+
 export enum PaymentStatus {
   PENDING = 'PENDING',
   PAID = 'PAID',
@@ -23,43 +43,6 @@ export enum InvoiceType {
   NOTA_CREDITO_C = 'NOTA_CREDITO_C',
 }
 
-export enum SaleHistoryAction {
-  CREATED = 'CREATED',
-  UPDATED = 'UPDATED',
-  CANCELLED = 'CANCELLED',
-}
-
-export enum SaleReturnStatus {
-  PENDING = 'PENDING',
-  APPROVED = 'APPROVED',
-  REJECTED = 'REJECTED',
-  PROCESSED = 'PROCESSED',
-}
-
-export enum RefundType {
-  CASH = 'CASH',
-  CREDIT = 'CREDIT',
-  EXCHANGE = 'EXCHANGE',
-}
-
-import {
-  Entity,
-  PrimaryGeneratedColumn,
-  Column,
-  ManyToOne,
-  OneToMany,
-  OneToOne,
-  Index,
-} from 'typeorm';
-import { Shop } from '@/shop/entities/shop.entity';
-import { User } from '@/auth/entities/user.entity';
-import { Customer } from '@/customer/entities/customer.entity';
-import { PaymentMethod } from '@/payment-method/entities/payment-method.entity';
-import { SaleHistory } from './sale-history.entity';
-import { SaleItemHistory } from './sale-item-history.entity';
-import { SaleItem } from './sale-item.entity';
-import { SaleReturn } from './sale-return.entity';
-import { CashMovement } from '@/cash-movement/entities/cash-movement.entity';
 @Entity()
 @Index(['shopId', 'saleDate'])
 @Index(['customerId', 'saleDate'])
@@ -72,14 +55,11 @@ export class Sale {
   @Column()
   shopId: string;
 
-  @Column({ type: 'text', nullable: true })
+  @Column({ nullable: true })
   customerId?: string | null;
 
-  @Column({ type: 'text', nullable: true })
+  @Column({ nullable: true })
   employeeId?: string | null;
-
-  @Column({ type: 'text', nullable: true })
-  cashRegisterId?: string | null;
 
   @Column()
   paymentMethodId: string;
@@ -94,7 +74,7 @@ export class Sale {
   @Column('float', { default: 0 })
   taxAmount: number;
 
-  @Column('float')
+  @Column({ type: 'decimal', precision: 12, scale: 2 })
   totalAmount: number;
 
   @Column({
@@ -108,10 +88,10 @@ export class Sale {
   saleDate: Date;
 
   @Column({ type: 'text', nullable: true })
-  notes?: string | null;
+  notes: string | null;
 
-  @Column({ type: 'text', nullable: true })
-  invoiceNumber?: string | null;
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  invoiceNumber: string | null;
 
   @Column({ type: 'enum', enum: InvoiceType, nullable: true })
   invoiceType?: InvoiceType | null;
@@ -127,14 +107,15 @@ export class Sale {
   isActive: boolean;
 
   @Column({ type: 'timestamp', nullable: true })
-  cancelledAt?: Date | null;
+  cancelledAt: Date | null;
 
   @Column({ type: 'text', nullable: true })
-  cancelledBy?: string | null;
+  cancelledBy: string | null;
 
   @Column({ type: 'text', nullable: true })
-  cancellationReason?: string | null;
+  cancellationReason: string | null;
 
+  // Relaciones
   @ManyToOne(() => Shop)
   shop: Shop;
 
@@ -159,10 +140,8 @@ export class Sale {
   @OneToMany(() => SaleReturn, (sr) => sr.sale)
   saleReturns: SaleReturn[];
 
-  // @OneToOne(() => CustomerAccountMovement, { nullable: true })
-  // accountMovement?: CustomerAccountMovement | null;
-
   @OneToOne(() => CashMovement, { nullable: true })
+  @JoinColumn()
   cashMovement?: CashMovement | null;
 
   @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
