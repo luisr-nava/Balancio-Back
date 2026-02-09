@@ -1,5 +1,6 @@
 import {
   IsArray,
+  IsDateString,
   IsEnum,
   IsNotEmpty,
   IsNumber,
@@ -53,8 +54,8 @@ export class CreateSaleDto {
   items: CreateSaleItemDto[];
 
   // 🔹 montos (calculados pero explícitos)
-  @IsNumber()
-  subtotal: number;
+  // @IsNumber()
+  // subtotal: number;
 
   @IsOptional()
   @IsNumber()
@@ -64,8 +65,8 @@ export class CreateSaleDto {
   @IsNumber()
   taxAmount?: number;
 
-  @IsNumber()
-  totalAmount: number;
+  // @IsNumber()
+  // totalAmount: number;
 
   // 🔹 estado de pago
   @IsOptional()
@@ -85,4 +86,8 @@ export class CreateSaleDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @IsOptional()
+  @IsDateString()
+  saleDate?: string;
 }
