@@ -5,7 +5,7 @@ import { AnalyticsQueryDto } from './dto/analytics-query.dto';
 import { GetUser } from '@/auth/decorators/get-user.decorators';
 import { JwtPayload } from 'jsonwebtoken';
 import { AnalyticsResponse } from './interfaces/analytics-response.interface';
-
+// TODO: 
 @UseGuards(JwtAuthGuard)
 @Controller('analytics')
 export class AnalyticsController {

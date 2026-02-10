@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { CreateSaleDto } from './dto/create-sale.dto';
 import { UpdateSaleDto } from './dto/update-sale.dto';
-import { DataSource, Repository } from 'typeorm';
+import { Between, DataSource, In, Repository } from 'typeorm';
 import { PaymentStatus, Sale, SaleStatus } from './entities/sale.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { SaleItem } from './entities/sale-item.entity';
@@ -14,6 +14,7 @@ import { CashRegisterStatus } from '@/cash-register/enums/cash-register-status.e
 import { CancelSaleDto } from './dto/cancel-sale.dto';
 import { JwtPayload } from 'jsonwebtoken';
 import { CashMovementType } from '@/cash-register/entities/cash-register.entity';
+import { Customer } from '@/customer/entities/customer.entity';
 
 @Injectable()
 export class SaleService {
@@ -51,7 +52,7 @@ export class SaleService {
         throw new BadRequestException('La venta debe tener al menos un item');
       }
 
-      // 2️⃣ Calcular totales ANTES de crear la venta
+      // 2️⃣ Calcular totales
       let saleSubtotal = 0;
       let saleTaxAmount = 0;
       let saleTotal = 0;
@@ -75,7 +76,42 @@ export class SaleService {
         saleTotal += itemTotal;
       }
 
-      // 3️⃣ Crear venta (YA con totales válidos)
+      // 2.5️⃣ Validación FIADO (PENDING)
+      if (dto.paymentStatus === PaymentStatus.PENDING) {
+        if (!dto.customerId) {
+          throw new BadRequestException('Una venta fiada requiere un cliente');
+        }
+
+        const customer = await manager.findOne(Customer, {
+          where: { id: dto.customerId, shopId: dto.shopId },
+        });
+
+        if (!customer) {
+          throw new BadRequestException('Cliente no encontrado');
+        }
+
+        const newBalance = Number(customer.currentBalance ?? 0) + saleTotal;
+
+        // 👉 SOLO validar si tiene límite
+        if (
+          customer.creditLimit !== null &&
+          customer.creditLimit !== undefined
+        ) {
+          if (newBalance > customer.creditLimit) {
+            throw new BadRequestException(
+              `Límite de crédito excedido. Disponible: ${
+                customer.creditLimit - customer.currentBalance
+              }`,
+            );
+          }
+        }
+
+        // Actualizar balance del cliente
+        customer.currentBalance = newBalance;
+        await manager.save(customer);
+      }
+
+      // 3️⃣ Crear venta
       const sale = manager.create(Sale, {
         shopId: dto.shopId,
         customerId: dto.customerId ?? null,
@@ -134,7 +170,7 @@ export class SaleService {
         shopProduct.stock = (shopProduct.stock ?? 0) - quantity;
         await manager.save(shopProduct);
 
-        // item history (snapshot)
+        // item history
         await manager.save(
           manager.create(SaleItemHistory, {
             saleId: sale.id,
@@ -150,7 +186,7 @@ export class SaleService {
         );
       }
 
-      // 5️⃣ Cash movement (solo si está paga)
+      // 5️⃣ Cash movement SOLO si está paga
       if (sale.paymentStatus === PaymentStatus.PAID) {
         const movement = manager.create(CashMovement, {
           cashRegisterId: cashRegister.id,
@@ -167,35 +203,25 @@ export class SaleService {
         await manager.save(sale);
       }
 
-      // 6️⃣ Sale history
-     await manager.save(
-       manager.create(SaleHistory, {
-         sale,
-         saleId: sale.id,
-         userId: user.id,
-         action: SaleHistoryAction.CREATED,
-         snapshot: {
-           shopId: sale.shopId,
-           customerId: sale.customerId,
-           paymentMethodId: sale.paymentMethodId,
-           subtotal: sale.subtotal,
-           taxAmount: sale.taxAmount,
-           totalAmount: sale.totalAmount,
-           paymentStatus: sale.paymentStatus,
-           status: sale.status,
-           saleDate: sale.saleDate,
-           items: dto.items.map((i) => ({
-             shopProductId: i.shopProductId,
-             quantity: i.quantity,
-             unitPrice: i.unitPrice,
-             discount: i.discount ?? 0,
-             taxRate: i.taxRate ?? 0,
-             priceWasModified: i.priceWasModified ?? false,
-           })),
-         },
-       }),
-     );
-
+      // 6️⃣ Sale history (con snapshot obligatorio)
+      await manager.save(
+        manager.create(SaleHistory, {
+          sale,
+          saleId: sale.id,
+          userId: user.id,
+          action: SaleHistoryAction.CREATED,
+          snapshot: {
+            shopId: sale.shopId,
+            customerId: sale.customerId,
+            subtotal: sale.subtotal,
+            taxAmount: sale.taxAmount,
+            totalAmount: sale.totalAmount,
+            paymentStatus: sale.paymentStatus,
+            saleDate: sale.saleDate,
+            items: dto.items,
+          },
+        }),
+      );
 
       return {
         id: sale.id,
@@ -206,6 +232,115 @@ export class SaleService {
     });
   }
 
+  async getAll(
+    filters: {
+      shopId?: string;
+      fromDate?: string;
+      toDate?: string;
+      page?: number;
+      limit?: number;
+    },
+    user: JwtPayload,
+  ) {
+    const page = filters.page ?? 1;
+    const limit = filters.limit ?? 20;
+    const skip = (page - 1) * limit;
+
+    const where: any = {};
+
+    // 🔐 VISIBILIDAD POR ROL
+    if (user.role === 'EMPLOYEE') {
+      // solo sus ventas
+      where.employeeId = user.id;
+    }
+
+    if (user.role === 'MANAGER') {
+      // solo tiendas donde trabaja
+      if (!user.shopIds || user.shopIds.length === 0) {
+        return { data: [], total: 0, page, limit };
+      }
+
+      where.shopId = filters.shopId ? filters.shopId : In(user.shopIds);
+    }
+
+    if (user.role === 'OWNER') {
+      // todas las ventas del owner
+      if (filters.shopId) {
+        where.shopId = filters.shopId;
+      }
+      // si no hay shopId → ve todas
+    }
+
+    // 📅 RANGO DE FECHAS
+    if (filters.fromDate && filters.toDate) {
+      where.saleDate = Between(
+        new Date(filters.fromDate),
+        new Date(filters.toDate),
+      );
+    }
+
+    const [sales, total] = await this.saleRepo.findAndCount({
+      where,
+      relations: {
+        shop: true,
+        customer: true,
+        paymentMethod: true,
+        items: {
+          shopProduct: {
+            product: true,
+          },
+        },
+        history: true,
+      },
+      order: { saleDate: 'DESC' },
+      skip,
+      take: limit,
+    });
+
+    return {
+      data: sales.map((sale) => ({
+        id: sale.id,
+        shop: sale.shop.name,
+        customer: sale.customer?.fullName ?? null,
+        paymentMethod: sale.paymentMethod.name,
+        items: sale.items.map((item) => {
+          const basePrice =
+            item.shopProduct.salePrice ?? item.shopProduct.costPrice;
+
+          return {
+            product: item.shopProduct.product.name,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            basePrice,
+            priceDifference: item.unitPrice - basePrice,
+            total: item.total,
+            priceWasModified: item.priceWasModified,
+          };
+        }),
+        subtotal: sale.subtotal,
+        taxAmount: sale.taxAmount,
+        totalAmount: sale.totalAmount,
+        paymentStatus: sale.paymentStatus,
+        status: sale.status,
+        saleDate: sale.saleDate,
+        notes: sale.notes,
+        history:
+          sale.history
+            ?.sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt))
+            .map((h) => ({
+              action: h.action,
+              userId: h.userId,
+              createdAt: h.createdAt,
+              snapshot: h.snapshot,
+            })) ?? [],
+      })),
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
   // ─────────────────────────────────────────────
   // UPDATE SALE
   // ─────────────────────────────────────────────
@@ -213,27 +348,29 @@ export class SaleService {
     return this.dataSource.transaction(async (manager) => {
       const sale = await manager.findOne(Sale, {
         where: { id },
-        relations: ['items', 'cashMovement'],
+        relations: {
+          cashMovement: true, // 👈 SOLO ESTO
+        },
       });
 
       if (!sale) {
         throw new BadRequestException('Venta no encontrada');
       }
 
-      // 1️⃣ La venta pertenece a una caja cerrada
+      // 1️⃣ Venta de caja cerrada → NO editable
       if (sale.cashMovement?.cashRegisterId) {
-        const cashRegister = await this.cashRegisterService.getById(
+        const register = await this.cashRegisterService.getById(
           sale.cashMovement.cashRegisterId,
         );
 
-        if (cashRegister?.status === CashRegisterStatus.CLOSED) {
+        if (register?.status === CashRegisterStatus.CLOSED) {
           throw new BadRequestException(
             'No se puede modificar una venta de una caja cerrada',
           );
         }
       }
 
-      // 2️⃣ Debe existir una caja abierta actual
+      // 2️⃣ Caja abierta actual obligatoria
       const currentRegister = await this.cashRegisterService.getCurrentForUser(
         sale.shopId,
         user.id,
@@ -245,24 +382,36 @@ export class SaleService {
         );
       }
 
-      // 3️⃣ Revertir stock e items si vienen nuevos
+      const previousTotal = Number(sale.totalAmount);
+      const previousPaymentStatus = sale.paymentStatus;
+
+      let subtotal = 0;
+      let taxAmount = 0;
+      let totalAmount = 0;
+
+      // 3️⃣ Si vienen items → revertir stock + borrar items
       if (dto.items) {
-        for (const oldItem of sale.items) {
+        const oldItems = await manager.find(SaleItem, {
+          where: { sale: { id: sale.id } },
+        });
+
+        for (const oldItem of oldItems) {
           const product = await manager.findOne(ShopProduct, {
             where: { id: oldItem.shopProductId },
           });
 
           if (product) {
-            product.stock! += Number(oldItem.quantity);
+            product.stock = (product.stock ?? 0) + Number(oldItem.quantity);
             await manager.save(product);
           }
-
-          await manager.remove(oldItem);
         }
 
+        await manager.delete(SaleItem, { sale: { id: sale.id } });
+
+        // 4️⃣ Crear nuevos items
         for (const item of dto.items) {
           const product = await manager.findOne(ShopProduct, {
-            where: { id: item.shopProductId },
+            where: { id: item.shopProductId, shopId: sale.shopId },
           });
 
           if (!product) {
@@ -271,59 +420,127 @@ export class SaleService {
             );
           }
 
-          const subtotal = Number(item.quantity) * item.unitPrice;
-          const taxAmount = item.taxRate ? subtotal * item.taxRate : 0;
+          const quantity = Number(item.quantity);
+          const itemSubtotal = quantity * item.unitPrice;
+          const itemTax = item.taxRate ? itemSubtotal * item.taxRate : 0;
+          const itemDiscount = item.discount ?? 0;
+          const itemTotal = itemSubtotal - itemDiscount + itemTax;
 
-          const total = subtotal - (item.discount ?? 0) + taxAmount;
+          subtotal += itemSubtotal;
+          taxAmount += itemTax;
+          totalAmount += itemTotal;
 
           await manager.save(
             manager.create(SaleItem, {
-              sale,
-              shopProduct: product,
-              shopProductId: product.id,
+              sale: { id: sale.id }, // ✅ JAMÁS saleId
+              shopProduct: { id: product.id },
               quantity: item.quantity,
               unitPrice: item.unitPrice,
-              subtotal,
-              discount: item.discount ?? 0,
+              subtotal: itemSubtotal,
+              discount: itemDiscount,
               taxRate: item.taxRate ?? 0,
-              taxAmount,
-              total,
+              taxAmount: itemTax,
+              total: itemTotal,
               priceWasModified: item.priceWasModified ?? false,
             }),
           );
 
-          product.stock! -= Number(item.quantity);
+          product.stock = (product.stock ?? 0) - quantity;
           await manager.save(product);
         }
+
+        sale.subtotal = subtotal;
+        sale.taxAmount = taxAmount;
+        sale.totalAmount = totalAmount;
       }
 
-      // 4️⃣ Update campos simples
+      // 5️⃣ Campos simples
       sale.customerId = dto.customerId ?? sale.customerId;
-      sale.subtotal = dto.subtotal ?? sale.subtotal;
-      sale.discountAmount = dto.discountAmount ?? sale.discountAmount;
-      sale.taxAmount = dto.taxAmount ?? sale.taxAmount;
-      sale.totalAmount = dto.totalAmount ?? sale.totalAmount;
       sale.invoiceType = dto.invoiceType ?? sale.invoiceType;
       sale.invoiceNumber = dto.invoiceNumber ?? sale.invoiceNumber;
       sale.notes = dto.notes ?? sale.notes;
+      sale.paymentStatus = dto.paymentStatus ?? sale.paymentStatus;
 
-      await manager.save(sale);
+      await manager.save(sale); // ✅ ahora es seguro
 
-      // 5️⃣ Sync cash movement
-      if (sale.cashMovement) {
+      // 6️⃣ Lógica FIADO / balance cliente
+      if (sale.customerId) {
+        const customer = await manager.findOne(Customer, {
+          where: { id: sale.customerId, shopId: sale.shopId },
+        });
+
+        if (!customer) {
+          throw new BadRequestException('Cliente no encontrado');
+        }
+
+        // PENDING → PAID
+        if (
+          previousPaymentStatus === PaymentStatus.PENDING &&
+          sale.paymentStatus === PaymentStatus.PAID
+        ) {
+          await manager.decrement(
+            Customer,
+            { id: customer.id },
+            'currentBalance',
+            previousTotal,
+          );
+
+          const movement = manager.create(CashMovement, {
+            cashRegisterId: currentRegister.id,
+            shopId: sale.shopId,
+            userId: user.id,
+            type: CashMovementType.INCOME,
+            amount: sale.totalAmount,
+            description: `Cobro venta fiada ${sale.id}`,
+            saleId: sale.id,
+          });
+
+          await manager.save(movement);
+          sale.cashMovement = movement;
+          await manager.save(sale);
+        }
+
+        // sigue FIADO → ajustar diferencia
+        if (
+          previousPaymentStatus === PaymentStatus.PENDING &&
+          sale.paymentStatus === PaymentStatus.PENDING
+        ) {
+          const diff = sale.totalAmount - previousTotal;
+
+          if (diff !== 0) {
+            if (customer.creditLimit != null) {
+              const available =
+                customer.creditLimit - (customer.currentBalance ?? 0);
+
+              if (diff > available) {
+                throw new BadRequestException(
+                  'El ajuste supera el límite de crédito del cliente',
+                );
+              }
+            }
+
+            await manager.increment(
+              Customer,
+              { id: customer.id },
+              'currentBalance',
+              diff,
+            );
+          }
+        }
+      }
+
+      // 7️⃣ Sync cash movement
+      if (sale.cashMovement && sale.paymentStatus === PaymentStatus.PAID) {
         sale.cashMovement.amount = sale.totalAmount;
         await manager.save(sale.cashMovement);
       }
 
-      await manager.save(
-        manager.create(SaleHistory, {
-          sale,
-          action: SaleHistoryAction.UPDATED,
-          userId: user.id,
-        }),
-      );
-
-      return sale;
+      return {
+        id: sale.id,
+        totalAmount: sale.totalAmount,
+        paymentStatus: sale.paymentStatus,
+        updatedAt: new Date(),
+      };
     });
   }
 
@@ -387,8 +604,16 @@ export class SaleService {
       await manager.save(
         manager.create(SaleHistory, {
           sale,
-          action: SaleHistoryAction.CANCELLED,
+          saleId: sale.id,
           userId: user.id,
+          action: SaleHistoryAction.CANCELLED,
+          snapshot: {
+            reason: dto.reason,
+            cancelledAt: sale.cancelledAt,
+            cancelledBy: user.id,
+            previousStatus: SaleStatus.COMPLETED,
+            previousPaymentStatus: sale.paymentStatus,
+          },
         }),
       );
 

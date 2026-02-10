@@ -28,29 +28,30 @@ export class SaleController {
     return this.saleService.create(dto, user);
   }
 
-  // @UseInterceptors(PaginationInterceptor)
-  // @Get()
-  // getAll(
-  //   @GetUser() user: JwtPayload,
-  //   @Query('shopId') shopId?: string,
-  //   @Query('customerId') customerId?: string,
-  //   @Query('fromDate') fromDate?: string,
-  //   @Query('toDate') toDate?: string,
-  //   @Query('page') page?: string,
-  //   @Query('limit') limit?: string,
-  // ) {
-  //   return this.saleService.getAll(
-  //     {
-  //       shopId,
-  //       customerId,
-  //       fromDate,
-  //       toDate,
-  //       page: Number(page ?? 1),
-  //       limit: Number(limit ?? 20),
-  //     },
-  //     user,
-  //   );
-  // }
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(PaginationInterceptor)
+  @Get()
+  getAll(
+    @GetUser() user: JwtPayload,
+    @Query('shopId') shopId?: string,
+    @Query('customerId') customerId?: string,
+    @Query('fromDate') fromDate?: string,
+    @Query('toDate') toDate?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.saleService.getAll(
+      {
+        shopId,
+        // customerId,
+        fromDate,
+        toDate,
+        page: Number(page ?? 1),
+        limit: Number(limit ?? 20),
+      },
+      user,
+    );
+  }
 
   @UseGuards(JwtAuthGuard)
   @Patch(':id')
@@ -61,7 +62,7 @@ export class SaleController {
   ) {
     return this.saleService.update(id, dto, user);
   }
-  
+
   // ❌ Cancelar venta (no se borra, se anula)
   @UseGuards(JwtAuthGuard)
   @Patch(':id/cancel')

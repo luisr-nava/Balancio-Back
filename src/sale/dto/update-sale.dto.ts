@@ -8,7 +8,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { InvoiceType } from '../entities/sale.entity';
+import { InvoiceType, PaymentStatus } from '../entities/sale.entity';
 import { CreateSaleItemDto } from './create-sale.dto';
 
 export class UpdateSaleDto {
@@ -54,4 +54,8 @@ export class UpdateSaleDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @IsOptional()
+  @IsEnum(PaymentStatus)
+  paymentStatus?: PaymentStatus;
 }
