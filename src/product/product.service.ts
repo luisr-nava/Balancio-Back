@@ -13,10 +13,14 @@ import {
 import { MeasurementUnit } from '@/measurement-unit/entities/measurement-unit.entity';
 import { Shop } from '@/shop/entities/shop.entity';
 import { BulkUpdateProductDto } from './dto/bulk-update-product.dto';
+import { DataSource } from 'typeorm';
+import { CloudinaryService } from '@/common/services/cloudinary.service';
 type DeleteScope = 'ONE' | 'MULTIPLE' | 'ALL';
 @Injectable()
 export class ProductService {
   constructor(
+    private readonly dataSource: DataSource,
+
     @InjectRepository(Product)
     private readonly productRepository: Repository<Product>,
 
@@ -31,87 +35,125 @@ export class ProductService {
     @InjectRepository(Shop)
     private readonly shopRepository: Repository<Shop>,
   ) {}
-  async create(dto: CreateProductDto, user: JwtPayload) {
-    const measurementUnitExists = await this.measurementUnitRepository.exist({
-      where: { id: dto.measurementUnitId },
-    });
+  async create(
+    dto: CreateProductDto,
+    user: JwtPayload,
+    file?: { buffer: Buffer },
+  ) {
+    const queryRunner = this.dataSource.createQueryRunner();
 
-    if (!measurementUnitExists) {
-      throw new ConflictException('La unidad de medida no existe');
-    }
-    const product = this.productRepository.create({
-      name: dto.name,
-      description: dto.description,
-      measurementUnitId: dto.measurementUnitId,
-      allowPriceOverride: dto.allowPriceOverride ?? false,
-    });
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
 
-    const savedProduct = await this.productRepository.save(product);
+    let uploadedImage: { url: string; publicId: string } | undefined;
+    try {
+      const measurementUnitExists = await queryRunner.manager.exists(
+        MeasurementUnit,
+        { where: { id: dto.measurementUnitId } },
+      );
 
-    const shopIds = dto.shops.map((s) => s.shopId);
-
-    const shops = await this.shopRepository.find({
-      where: { id: In(shopIds) },
-      select: ['id', 'currency'],
-    });
-
-    if (shops.length !== shopIds.length) {
-      throw new ConflictException('Una o más tiendas no existen');
-    }
-
-    const shopCurrencyMap = new Map(
-      shops.map((shop) => [shop.id, shop.currency]),
-    );
-
-    const shopProducts: ShopProduct[] = [];
-    for (const shop of dto.shops) {
-      const currency = shopCurrencyMap.get(shop.shopId);
-
-      if (!currency) {
-        throw new ConflictException('Moneda de la tienda no encontrada');
+      if (!measurementUnitExists) {
+        throw new ConflictException('La unidad de medida no existe');
       }
 
-      const barcode = await this.resolveBarcodeForShop(
-        shop.shopId,
-        dto.barcode, // 👈 UNO SOLO
-      );
-
-      const shopProduct = this.shopProductRepository.create({
-        productId: savedProduct.id,
-        shopId: shop.shopId,
-        barcode,
-        categoryId: shop.categoryId ?? null,
-        supplierId: shop.supplierId ?? null,
-        costPrice: shop.costPrice,
-        salePrice: shop.salePrice,
-        stock: shop.stock ?? null,
-        currency,
-        createdBy: user.id,
+      const product = queryRunner.manager.create(Product, {
+        name: dto.name,
+        description: dto.description,
+        measurementUnitId: dto.measurementUnitId,
+        allowPriceOverride: dto.allowPriceOverride ?? false,
       });
 
-      const savedShopProduct =
-        await this.shopProductRepository.save(shopProduct);
+      const savedProduct = await queryRunner.manager.save(Product, product);
 
-      shopProducts.push(savedShopProduct);
+      const shopIds = dto.shops.map((s) => s.shopId);
 
-      await this.productHistoryRepository.save(
-        this.productHistoryRepository.create({
-          shopProduct: { id: savedShopProduct.id },
-          userId: user.id,
-          changeType: ProductHistoryChangeType.CREATED,
-          previousStock: null,
-          newStock: shop.stock ?? null,
-          note: 'Producto creado',
-        }),
+      const shops = await queryRunner.manager.find(Shop, {
+        where: { id: In(shopIds) },
+        select: ['id', 'currency'],
+      });
+
+      if (shops.length !== shopIds.length) {
+        throw new ConflictException('Una o más tiendas no existen');
+      }
+
+      const shopCurrencyMap = new Map(
+        shops.map((shop) => [shop.id, shop.currency]),
       );
+
+      const shopProducts: ShopProduct[] = [];
+
+      for (const shop of dto.shops) {
+        const currency = shopCurrencyMap.get(shop.shopId);
+
+        if (!currency) {
+          throw new ConflictException('Moneda de la tienda no encontrada');
+        }
+
+        const barcode = await this.resolveBarcodeForShop(
+          queryRunner,
+          shop.shopId,
+          dto.barcode,
+        );
+
+        const shopProduct = queryRunner.manager.create(ShopProduct, {
+          productId: savedProduct.id,
+          shopId: shop.shopId,
+          barcode,
+          categoryId: shop.categoryId ?? null,
+          supplierId: shop.supplierId ?? null,
+          costPrice: shop.costPrice,
+          salePrice: shop.salePrice,
+          stock: shop.stock ?? null,
+          currency,
+          createdBy: user.id,
+        });
+
+        const savedShopProduct = await queryRunner.manager.save(
+          ShopProduct,
+          shopProduct,
+        );
+
+        shopProducts.push(savedShopProduct);
+
+        await queryRunner.manager.save(
+          ProductHistory,
+          queryRunner.manager.create(ProductHistory, {
+            shopProduct: { id: savedShopProduct.id },
+            userId: user.id,
+            changeType: ProductHistoryChangeType.CREATED,
+            previousStock: null,
+            newStock: shop.stock ?? null,
+            note: 'Producto creado',
+          }),
+        );
+      }
+
+      if (file) {
+        uploadedImage = await CloudinaryService.uploadProductImage(file);
+
+        savedProduct.imageUrl = uploadedImage.url;
+        savedProduct.imagePublicId = uploadedImage.publicId;
+
+        await queryRunner.manager.save(Product, savedProduct);
+      }
+      await queryRunner.commitTransaction();
+
+      return {
+        message: 'Producto creado correctamente',
+        product: {
+          ...savedProduct,
+          shopProducts,
+        },
+      };
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      if (uploadedImage?.publicId) {
+        await CloudinaryService.deleteImage(uploadedImage.publicId);
+      }
+      throw error;
+    } finally {
+      await queryRunner.release();
     }
-    return {
-      message: 'Producto creado correctamente',
-      product: {
-        ...savedProduct,
-        shopProducts,
-      },
-    };
   }
 
   async getAll(
@@ -147,9 +189,11 @@ export class ProductService {
           id: product.id,
           name: product.name,
           description: product.description,
+          imageUrl: product.imageUrl ?? null,
           measurementUnit: product.measurementUnit?.name,
 
           shops: shopProducts.map((sp) => ({
+            shopProductId: sp.id, 
             id: sp.shop.id,
             name: sp.shop.name,
             currency: sp.currency,
@@ -174,6 +218,7 @@ export class ProductService {
       })
       .filter(Boolean);
 
+
     return {
       data: transformed,
       pagination: {
@@ -193,72 +238,119 @@ export class ProductService {
     productId: string,
     dto: UpdateProductDto,
     user: JwtPayload,
+    file?: { buffer: Buffer },
   ) {
-    if (!dto.shops?.length) {
-      throw new ConflictException('Debe especificar al menos una tienda');
-    }
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
 
-    for (const shopDto of dto.shops) {
-      const shopProduct = await this.shopProductRepository.findOne({
-        where: {
-          productId,
-          shopId: shopDto.shopId,
-        },
+    let uploadedImage: { url: string; publicId: string } | undefined;
+
+    let previousImagePublicId: string | null = null;
+
+    try {
+      const product = await queryRunner.manager.findOne(Product, {
+        where: { id: productId },
       });
 
-      if (!shopProduct) {
-        throw new ConflictException(
-          `El producto no existe en la tienda ${shopDto.shopId}`,
-        );
+      if (!product) {
+        throw new ConflictException('Producto no encontrado');
       }
 
-      // 🔎 Barcode único por tienda
-      if (shopDto.barcode && shopDto.barcode !== shopProduct.barcode) {
-        const exists = await this.shopProductRepository.exist({
+      previousImagePublicId = product.imagePublicId ?? null;
+
+      if (!dto.shops?.length) {
+        throw new ConflictException('Debe especificar al menos una tienda');
+      }
+
+      for (const shopDto of dto.shops) {
+        const shopProduct = await queryRunner.manager.findOne(ShopProduct, {
           where: {
+            productId,
             shopId: shopDto.shopId,
-            barcode: shopDto.barcode,
           },
         });
 
-        if (exists) {
+        if (!shopProduct) {
           throw new ConflictException(
-            `El código de barras ya existe en la tienda ${shopDto.shopId}`,
+            `El producto no existe en la tienda ${shopDto.shopId}`,
           );
         }
+
+        if (shopDto.barcode && shopDto.barcode !== shopProduct.barcode) {
+          const exists = await queryRunner.manager.exists(ShopProduct, {
+            where: {
+              shopId: shopDto.shopId,
+              barcode: shopDto.barcode,
+            },
+          });
+
+          if (exists) {
+            throw new ConflictException(
+              `El código de barras ya existe en la tienda ${shopDto.shopId}`,
+            );
+          }
+        }
+
+        await queryRunner.manager.save(
+          ProductHistory,
+          queryRunner.manager.create(ProductHistory, {
+            shopProduct: { id: shopProduct.id },
+            userId: user.id,
+            changeType: ProductHistoryChangeType.UPDATED,
+            previousStock: shopProduct.stock,
+            newStock: shopDto.stock ?? shopProduct.stock,
+            previousCost: shopProduct.costPrice,
+            newCost: shopDto.costPrice ?? shopProduct.costPrice,
+            note: 'Actualización de producto',
+          }),
+        );
+
+        Object.assign(shopProduct, {
+          costPrice: shopDto.costPrice ?? shopProduct.costPrice,
+          salePrice: shopDto.salePrice ?? shopProduct.salePrice,
+          stock: shopDto.stock ?? shopProduct.stock,
+          barcode: shopDto.barcode ?? shopProduct.barcode,
+          categoryId: shopDto.categoryId ?? shopProduct.categoryId,
+          supplierId: shopDto.supplierId ?? shopProduct.supplierId,
+        });
+
+        await queryRunner.manager.save(ShopProduct, shopProduct);
       }
 
-      // 🧾 Historial
-      await this.productHistoryRepository.save(
-        this.productHistoryRepository.create({
-          shopProduct: { id: shopProduct.id },
-          userId: user.id,
-          changeType: ProductHistoryChangeType.UPDATED,
-          previousStock: shopProduct.stock,
-          newStock: shopDto.stock ?? shopProduct.stock,
-          previousCost: shopProduct.costPrice,
-          newCost: shopDto.costPrice ?? shopProduct.costPrice,
-          note: 'Actualización de producto',
-        }),
-      );
+      // 🔥 NUEVA IMAGEN
+      if (file) {
+        uploadedImage = await CloudinaryService.uploadProductImage(file);
 
-      // ✏️ Aplicar cambios
-      Object.assign(shopProduct, {
-        costPrice: shopDto.costPrice ?? shopProduct.costPrice,
-        salePrice: shopDto.salePrice ?? shopProduct.salePrice,
-        stock: shopDto.stock ?? shopProduct.stock,
-        barcode: shopDto.barcode ?? shopProduct.barcode,
-        categoryId: shopDto.categoryId ?? shopProduct.categoryId,
-        supplierId: shopDto.supplierId ?? shopProduct.supplierId,
-      });
+        product.imageUrl = uploadedImage.url;
+        product.imagePublicId = uploadedImage.publicId;
 
-      await this.shopProductRepository.save(shopProduct);
+        await queryRunner.manager.save(Product, product);
+      }
+
+      await queryRunner.commitTransaction();
+
+      // 🔥 BORRAR IMAGEN ANTERIOR SOLO DESPUÉS DEL COMMIT
+      if (file && previousImagePublicId) {
+        await CloudinaryService.deleteImage(previousImagePublicId);
+      }
+
+      return {
+        message: 'Producto actualizado correctamente',
+        affectedShops: dto.shops.map((s) => s.shopId),
+      };
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+
+      // 🔥 SI FALLA Y SUBIMOS NUEVA, LA BORRAMOS
+      if (uploadedImage?.publicId) {
+        await CloudinaryService.deleteImage(uploadedImage.publicId);
+      }
+
+      throw error;
+    } finally {
+      await queryRunner.release();
     }
-
-    return {
-      message: 'Producto actualizado correctamente',
-      affectedShops: dto.shops.map((s) => s.shopId),
-    };
   }
 
   async deleteProduct(
@@ -266,31 +358,73 @@ export class ProductService {
     user: JwtPayload,
     body?: { scope?: DeleteScope; shopIds?: string[] },
   ) {
-    const shopProducts = await this.resolveTargetShopProducts(
-      productId,
-      user,
-      body?.scope,
-      body?.shopIds,
-    );
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
 
-    if (!shopProducts.length) {
-      throw new ConflictException(
-        'El producto no existe en las tiendas indicadas',
+    let imagePublicId: string | null = null;
+
+    try {
+      const product = await queryRunner.manager.findOne(Product, {
+        where: { id: productId },
+      });
+
+      if (!product) {
+        throw new ConflictException('Producto no encontrado');
+      }
+
+      imagePublicId = product.imagePublicId ?? null;
+
+      const shopProducts = await this.resolveTargetShopProducts(
+        productId,
+        user,
+        body?.scope,
+        body?.shopIds,
       );
-    }
 
-    for (const sp of shopProducts) {
-      await this.deleteShopProduct(sp.id, user);
-    }
+      if (!shopProducts.length) {
+        throw new ConflictException(
+          'El producto no existe en las tiendas indicadas',
+        );
+      }
 
-    return {
-      message: 'Operación realizada correctamente',
-      affectedShopIds: shopProducts.map((sp) => sp.shopId),
-    };
+      for (const sp of shopProducts) {
+        await this.deleteShopProduct(sp.id, user);
+      }
+
+      // 🔥 Verificamos si quedan shopProducts
+      const remaining = await queryRunner.manager.count(ShopProduct, {
+        where: { productId },
+      });
+
+      if (remaining === 0) {
+        await queryRunner.manager.delete(Product, productId);
+      }
+
+      await queryRunner.commitTransaction();
+
+      // 🔥 Si no quedan tiendas y había imagen → borrarla
+      if (remaining === 0 && imagePublicId) {
+        await CloudinaryService.deleteImage(imagePublicId);
+      }
+
+      return {
+        message: 'Operación realizada correctamente',
+        affectedShopIds: shopProducts.map((sp) => sp.shopId),
+      };
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
   }
 
-  async generateInternalBarcode(shopId: string): Promise<string> {
-    const last = await this.shopProductRepository.findOne({
+  async generateInternalBarcode(
+    queryRunner: any,
+    shopId: string,
+  ): Promise<string> {
+    const last = await queryRunner.manager.findOne(ShopProduct, {
       where: { shopId },
       order: { createdAt: 'DESC' },
       select: ['barcode'],
@@ -302,12 +436,12 @@ export class ProductService {
   }
 
   private async resolveBarcodeForShop(
+    queryRunner: any,
     shopId: string,
     baseBarcode?: string,
   ): Promise<string> {
-    // Si viene barcode global, intentamos usarlo
     if (baseBarcode) {
-      const exists = await this.shopProductRepository.exist({
+      const exists = await queryRunner.manager.exists(ShopProduct, {
         where: { shopId, barcode: baseBarcode },
       });
 
@@ -316,11 +450,10 @@ export class ProductService {
       }
     }
 
-    // Si no vino o ya existe → generar siguiente
     for (let i = 0; i < 5; i++) {
-      const generated = await this.generateInternalBarcode(shopId);
+      const generated = await this.generateInternalBarcode(queryRunner, shopId);
 
-      const exists = await this.shopProductRepository.exist({
+      const exists = await queryRunner.manager.exists(ShopProduct, {
         where: { shopId, barcode: generated },
       });
 

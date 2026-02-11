@@ -18,17 +18,28 @@ import { JwtPayload } from 'jsonwebtoken';
 import { GetUser } from '@/auth/decorators/get-user.decorators';
 import { PaginationInterceptor } from '@/common/interceptors/pagination.interceptor';
 import { BulkUpdateProductDto } from './dto/bulk-update-product.dto';
-
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import { UploadedFile } from '@nestjs/common';
 @Controller('product')
 export class ProductController {
   constructor(private readonly productService: ProductService) {}
   @UseGuards(JwtAuthGuard)
+  @UseInterceptors(
+    FileInterceptor('image', {
+      storage: memoryStorage(),
+      limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+    }),
+  )
   @Post()
   create(
+    @UploadedFile() file: any,
     @Body() createProductDto: CreateProductDto,
     @GetUser() user: JwtPayload,
   ) {
-    return this.productService.create(createProductDto, user);
+    const image = file ? { buffer: file.buffer } : undefined;
+
+    return this.productService.create(createProductDto, user, image);
   }
 
   @UseInterceptors(PaginationInterceptor)
@@ -54,13 +65,22 @@ export class ProductController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @UseInterceptors(
+    FileInterceptor('image', {
+      storage: memoryStorage(),
+      limits: { fileSize: 5 * 1024 * 1024 },
+    }),
+  )
   @Patch(':productId')
   update(
     @Param('productId') productId: string,
+    @UploadedFile() file: any,
     @Body() dto: UpdateProductDto,
     @GetUser() user: JwtPayload,
   ) {
-    return this.productService.updateProduct(productId, dto, user);
+    const image = file ? { buffer: file.buffer } : undefined;
+
+    return this.productService.updateProduct(productId, dto, user, image);
   }
 
   @UseGuards(JwtAuthGuard)

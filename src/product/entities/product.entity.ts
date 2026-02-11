@@ -48,4 +48,10 @@ export class Product {
     nullable: true,
   })
   supplier?: Supplier | null;
+
+  @Column({ type: 'text', nullable: true })
+  imageUrl?: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  imagePublicId?: string | null;
 }

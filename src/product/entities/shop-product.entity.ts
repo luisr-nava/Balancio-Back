@@ -67,4 +67,5 @@ export class ShopProduct {
 
   @Column({ type: 'text' })
   barcode: string;
+
 }

@@ -18,12 +18,14 @@ class CreateProductShopDto {
   @IsString()
   barcode?: string;
 
+  @Type(() => Number)
   @IsNumber()
   costPrice: number;
 
+  @Type(() => Number)
   @IsNumber()
   salePrice: number;
-
+  @Type(() => Number)
   @IsOptional()
   @IsNumber()
   stock?: number;
@@ -85,4 +87,6 @@ export class CreateProductDto {
   @ValidateNested({ each: true })
   @Type(() => CreateProductShopDto)
   shops: CreateProductShopDto[];
+
+
 }

@@ -7,6 +7,9 @@ interface EnvVars {
   DB_PASSWORD: string;
   DB_NAME: string;
   JWT_SECRET: string;
+  CLOUDINARY_CLOUD_NAME: string;
+  CLOUDINARY_API_KEY: string;
+  CLOUDINARY_API_SECRET: string;
   FRONTEND_URL?: string;
   STRIPE_API_KEY?: string;
   STRIPE_WEBHOOK_SECRET?: string;
@@ -23,6 +26,9 @@ const envVarsSchema = joi
       'string.min':
         'JWT_SECRET debe tener al menos 32 caracteres para ser seguro',
     }),
+    CLOUDINARY_CLOUD_NAME: joi.string().min(3).max(63).required(),
+    CLOUDINARY_API_KEY: joi.string().min(3).max(63).required(),
+    CLOUDINARY_API_SECRET: joi.string().min(3).max(63).required(),
     FRONTEND_URL: joi.string().uri().optional(),
     STRIPE_API_KEY: joi.string().optional(),
     STRIPE_WEBHOOK_SECRET: joi.string().optional(),
@@ -43,6 +49,9 @@ export const envs = {
   dbPassword: envVars.DB_PASSWORD,
   dbName: envVars.DB_NAME,
   jwtSecret: envVars.JWT_SECRET,
+  CLOUDINARY_CLOUD_NAME: envVars.CLOUDINARY_CLOUD_NAME,
+  CLOUDINARY_API_KEY: envVars.CLOUDINARY_API_KEY,
+  CLOUDINARY_API_SECRET: envVars.CLOUDINARY_API_SECRET,
   frontendUrl: envVars.FRONTEND_URL,
   stripeApiKey: envVars.STRIPE_API_KEY,
   stripeWebhookSecret: envVars.STRIPE_WEBHOOK_SECRET,
