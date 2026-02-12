@@ -2,30 +2,34 @@ import { Module } from '@nestjs/common';
 import { AnalyticsService } from './analytics.service';
 import { AnalyticsController } from './analytics.controller';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { Shop } from '@/shop/entities/shop.entity';
-import { ShopProduct } from '@/product/entities/shop-product.entity';
-import { User } from '@/auth/entities/user.entity';
-import { Expense } from '@/expense/entities/expense.entity';
-import { Income } from '@/income/entities/income.entity';
-import { Purchase } from '@/purchase/entities/purchase.entity';
-import { SaleItem } from '@/sale/entities/sale-item.entity';
+import { ShopDailyMetrics } from './entities/shop-daily-metrics.entity';
+import { ShopProductStats } from './entities/shop-product-stats.entity';
+import { ShopStats } from './entities/shop_stats.entity';
+import {
+  ExpenseSubscriber,
+  IncomeSubscriber,
+  PurchaseSubscriber,
+  SaleSubscriber,
+} from './subscribers/analytics.subscriber';
 import { Sale } from '@/sale/entities/sale.entity';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([
-      Shop,
+      ShopDailyMetrics,
+      ShopProductStats,
+      ShopStats,
       Sale,
-      SaleItem,
-      Purchase,
-      Income,
-      Expense,
-      User,
-      ShopProduct,
     ]),
   ],
+  providers: [
+    AnalyticsService,
+    SaleSubscriber,
+    IncomeSubscriber,
+    ExpenseSubscriber,
+    PurchaseSubscriber,
+  ],
   controllers: [AnalyticsController],
-  providers: [AnalyticsService],
   exports: [AnalyticsService],
 })
 export class AnalyticsModule {}

@@ -14,7 +14,9 @@ export const typeORMConfig = (
     // entities: [join(__dirname, '..', '**', '*.entity.{ts,js}')],
     synchronize: true,
     entities: [join(__dirname, '..', '**', '*.entity.{ts,js}')],
+    subscribers: [join(__dirname, '..', '**', '*.subscriber.{ts,js}')],
     retryAttempts: 5,
     retryDelay: 3000,
+    autoLoadEntities: true,
   };
 };
