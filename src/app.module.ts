@@ -19,7 +19,6 @@ import { ProductModule } from './product/product.module';
 import { ProductCategoryModule } from './product-category/product-category.module';
 import { PurchaseModule } from './purchase/purchase.module';
 import { PurchaseReturnModule } from './purchase-return/purchase-return.module';
-import { ReportsModule } from './reports/reports.module';
 import { SaleModule } from './sale/sale.module';
 import { SaleReturnModule } from './sale-return/sale-return.module';
 import { StockModule } from './stock/stock.module';
@@ -28,6 +27,7 @@ import { SupplierCategoryModule } from './supplier-category/supplier-category.mo
 import { SeedModule } from './database/seeds/seed.module';
 import { PrintModule } from './product/print/print.module';
 import { CashMovementModule } from './cash-movement/cash-movement.module';
+import { CashReportModule } from './cash-report/cash-report.module';
 
 @Module({
   imports: [
@@ -55,13 +55,13 @@ import { CashMovementModule } from './cash-movement/cash-movement.module';
     ProductCategoryModule,
     PurchaseModule,
     PurchaseReturnModule,
-    ReportsModule,
     SaleModule,
     SaleReturnModule,
     StockModule,
     SupplierModule,
     SupplierCategoryModule,
     CashMovementModule,
+    CashReportModule,
   ],
   controllers: [],
   providers: [],
