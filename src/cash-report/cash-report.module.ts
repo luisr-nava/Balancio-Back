@@ -5,11 +5,11 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { CashRegister } from '@/cash-register/entities/cash-register.entity';
 import { CashReportPdfService } from './cash-report-pdf.service';
 import { CashReportExcelService } from './cash-report-excel.service';
-import { ShopService } from '@/shop/shop.service';
 import { ShopModule } from '@/shop/shop.module';
+import { CashMovement } from '@/cash-movement/entities/cash-movement.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([CashRegister]), ShopModule],
+  imports: [TypeOrmModule.forFeature([CashRegister, CashMovement]), ShopModule],
   controllers: [CashReportController],
   providers: [CashReportService, CashReportPdfService, CashReportExcelService],
 })
