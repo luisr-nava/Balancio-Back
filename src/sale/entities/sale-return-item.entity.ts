@@ -1,5 +1,5 @@
+import { SaleReturn } from '@/sale-return/entities/sale-return.entity';
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne } from 'typeorm';
-import { SaleReturn } from './sale-return.entity';
 
 @Entity()
 export class SaleReturnItem {

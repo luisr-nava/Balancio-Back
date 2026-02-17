@@ -15,8 +15,8 @@ import { PaymentMethod } from '@/payment-method/entities/payment-method.entity';
 import { SaleItem } from './sale-item.entity';
 import { SaleHistory } from './sale-history.entity';
 import { SaleItemHistory } from './sale-item-history.entity';
-import { SaleReturn } from './sale-return.entity';
 import { CashMovement } from '@/cash-movement/entities/cash-movement.entity';
+import { SaleReturn } from '@/sale-return/entities/sale-return.entity';
 
 export enum PaymentStatus {
   PENDING = 'PENDING',
@@ -149,4 +149,6 @@ export class Sale {
 
   @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   updatedAt: Date;
+
+
 }

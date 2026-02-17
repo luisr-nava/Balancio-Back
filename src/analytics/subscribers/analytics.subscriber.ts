@@ -13,6 +13,8 @@ import { Expense } from '@/expense/entities/expense.entity';
 import { ShopProductStats } from '../entities/shop-product-stats.entity';
 import { SaleItem } from '@/sale/entities/sale-item.entity';
 import { ShopStats } from '../entities/shop_stats.entity';
+import { SaleReturn } from '@/sale-return/entities/sale-return.entity';
+import { SaleReturnItem } from '@/sale-return/entities/sale-return-item.entity';
 
 function normalizeDate(date: Date): string {
   return date.toISOString().split('T')[0];
@@ -22,7 +24,12 @@ async function applyDelta(
   event: InsertEvent<any> | UpdateEvent<any> | RemoveEvent<any>,
   shopId: string,
   date: Date,
-  field: 'salesTotal' | 'incomesTotal' | 'expensesTotal' | 'purchasesTotal',
+  field:
+    | 'salesTotal'
+    | 'incomesTotal'
+    | 'expensesTotal'
+    | 'purchasesTotal'
+    | 'saleReturnsTotal',
   amount: number,
   countDelta = 0,
 ) {
@@ -323,6 +330,7 @@ export class PurchaseSubscriber implements EntitySubscriberInterface<Purchase> {
     return Purchase;
   }
 
+  
   async afterInsert(event: InsertEvent<Purchase>) {
     const purchase = event.entity;
     if (!purchase) return;
@@ -365,5 +373,80 @@ export class PurchaseSubscriber implements EntitySubscriberInterface<Purchase> {
       'purchasesTotal',
       delta,
     );
+  }
+}
+
+@EventSubscriber()
+export class SaleReturnSubscriber implements EntitySubscriberInterface<SaleReturn> {
+  listenTo() {
+    return SaleReturn;
+  }
+
+  async afterUpdate(event: UpdateEvent<SaleReturn>) {
+    if (!event.databaseEntity || !event.entity) return;
+
+    const oldValue = Number(event.databaseEntity.total ?? 0);
+    const newValue = Number(event.entity.total ?? 0);
+
+    const delta = newValue - oldValue;
+
+    if (delta === 0) return;
+
+    await applyDelta(
+      event,
+      event.entity.shopId,
+      event.entity.createdAt,
+      'saleReturnsTotal',
+      delta,
+    );
+  }
+}
+
+@EventSubscriber()
+export class SaleReturnItemSubscriber implements EntitySubscriberInterface<SaleReturnItem> {
+  listenTo() {
+    return SaleReturnItem;
+  }
+
+  async afterInsert(event: InsertEvent<SaleReturnItem>) {
+    const item = event.entity;
+    if (!item) return;
+
+    const itemRepo = event.manager.getRepository(SaleReturnItem);
+    const saleRepo = event.manager.getRepository(Sale);
+    const statsRepo = event.manager.getRepository(ShopProductStats);
+
+    // 🔎 Volvemos a buscar el item con la relación cargada
+    const fullItem = await itemRepo.findOne({
+      where: { id: item.id },
+      relations: {
+        saleItem: true,
+      },
+    });
+
+    if (!fullItem?.saleItem) return;
+
+    const sale = await saleRepo.findOne({
+      where: { id: fullItem.saleItem.saleId },
+    });
+
+    if (!sale) return;
+
+    const stat = await statsRepo.findOne({
+      where: {
+        shopId: sale.shopId,
+        shopProductId: fullItem.saleItem.shopProductId,
+      },
+    });
+
+    if (!stat) return;
+
+    const quantity = Number(fullItem.quantity);
+    const amount = quantity * Number(fullItem.unitPrice);
+
+    stat.totalQuantity = Number(stat.totalQuantity ?? 0) - quantity;
+    stat.totalAmount = Number(stat.totalAmount ?? 0) - amount;
+
+    await statsRepo.save(stat);
   }
 }

@@ -24,7 +24,5 @@
   },
   "include": [
     "src/**/*.ts",
-    "src/verify/customer-account-movement.entity.ts",
-    "src/verify/customer-payment.entity.ts"
   ]
 }

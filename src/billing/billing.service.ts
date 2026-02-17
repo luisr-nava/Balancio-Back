@@ -165,10 +165,10 @@ export class BillingService {
       updateData.currentPeriodEnd = new Date(sub.current_period_end * 1000);
     }
 
-    await this.subscriptionRepository.update(
-      { stripeSubscriptionId: sub.id },
-      updateData,
-    );
+    await this.subscriptionRepository.save({
+      stripeSubscriptionId: sub.id,
+      ...updateData,
+    });
   }
 
   private async handleSubscriptionUpdated(event: Stripe.Event) {
@@ -182,10 +182,10 @@ export class BillingService {
       updateData.currentPeriodEnd = new Date(sub.current_period_end * 1000);
     }
 
-    await this.subscriptionRepository.update(
-      { stripeSubscriptionId: sub.id },
-      updateData,
-    );
+    await this.subscriptionRepository.save({
+      stripeSubscriptionId: sub.id,
+      ...updateData,
+    });
   }
 
   private resolvePlanFromSubscription(
@@ -251,10 +251,10 @@ export class BillingService {
       updateData.pendingPlan = undefined;
     }
 
-    await this.subscriptionRepository.update(
-      { id: subscriptionEntity.id },
-      updateData,
-    );
+    await this.subscriptionRepository.save({
+      id: subscriptionEntity.id,
+      ...updateData,
+    });
   }
 
   private async handleSubscriptionDeleted(event: Stripe.Event) {

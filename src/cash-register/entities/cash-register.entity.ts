@@ -10,6 +10,7 @@ export enum CashMovementType {
   WITHDRAWAL = 'WITHDRAWAL',
   DEPOSIT = 'DEPOSIT',
   ADJUSTMENT = 'ADJUSTMENT',
+  SALE_RETURN = 'SALE_RETURN',
 }
 
 export enum CashRegisterExportFormat {

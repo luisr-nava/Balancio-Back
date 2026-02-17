@@ -145,15 +145,19 @@ export class AuthService {
         update.lockUntil = lockUntil;
         update.failedLoginAttempts = 0; // opcional
 
-        await this.authRepository.update(user.id, update);
-
+        await this.authRepository.save({
+          id: user.id,
+          ...update,
+        });
         throw new ConflictException(
           `Demasiados intentos fallidos. Tu cuenta ha sido bloqueada por 15 minutos.`,
         );
       }
 
-      await this.authRepository.update(user.id, update);
-
+      await this.authRepository.save({
+        id: user.id,
+        ...update,
+      });
       throw new ConflictException('Credenciales inválidas.');
     }
 
@@ -248,7 +252,10 @@ export class AuthService {
       update.resendAttempts = 0; // reset
     }
 
-    await this.authRepository.update(user.id, update);
+    await this.authRepository.save({
+      id: user.id,
+      ...update,
+    });
 
     if (!update.resendLockUntil) {
       await this.sendVerificationCode(user.id, user.email, user.fullName);
@@ -293,7 +300,10 @@ export class AuthService {
       update.forgotAttempts = 0;
     }
 
-    await this.authRepository.update(user.id, update);
+    await this.authRepository.save({
+      id: user.id,
+      ...update,
+    });
 
     if (update.forgotLockUntil) {
       return genericResponse;

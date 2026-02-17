@@ -21,9 +21,7 @@ import { Purchase } from '@/purchase/entities/purchase.entity';
 import { Sale } from '@/sale/entities/sale.entity';
 import { ShopProduct } from '@/product/entities/shop-product.entity';
 import { SupplierShop } from '@/supplier/entities/supplier-shop.entity';
-import { SaleReturn } from '@/sale/entities/sale-return.entity';
 import { ShopMeasurementUnit } from '@/measurement-unit/entities/shop-measurement-unit.entity';
-import { StockAlert } from '@/stock/entities/stock.entity';
 import { UserShop } from '@/auth/entities/user-shop.entity';
 import { CategoryProductShop } from '@/product-category/entities/product-category-shop.entity';
 import { ShopPaymentMethod } from '@/payment-method/entities/shop-payment-method.entity';
@@ -107,11 +105,6 @@ export class Shop {
 
   @OneToMany(() => CashRegister, (cr) => cr.shop)
   cashRegisters: CashRegister[];
-
-  @OneToMany(() => ShopPaymentMethod, (spm) => spm.shop)
-  shopPaymentMethods: ShopPaymentMethod[];
-  @OneToMany(() => StockAlert, (sa) => sa.shop)
-  stockAlerts: StockAlert[];
 
   @OneToMany(() => ShopMeasurementUnit, (mu) => mu.shop)
   measurementUnits: ShopMeasurementUnit[];

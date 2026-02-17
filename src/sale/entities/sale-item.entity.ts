@@ -1,6 +1,14 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, Index } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  ManyToOne,
+  Index,
+  OneToMany,
+} from 'typeorm';
 import { Sale } from './sale.entity';
 import { ShopProduct } from '@/product/entities/shop-product.entity';
+import { SaleReturnItem } from '@/sale-return/entities/sale-return-item.entity';
 
 @Index(['saleId'])
 @Index(['shopProductId'])
@@ -47,4 +55,6 @@ export class SaleItem {
 
   @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   createdAt: Date;
+  @OneToMany(() => SaleReturnItem, (item) => item.saleItem)
+  saleReturnItems: SaleReturnItem[];
 }

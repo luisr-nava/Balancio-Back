@@ -8,10 +8,10 @@ import {
 } from 'typeorm';
 import { Shop } from '@/shop/entities/shop.entity';
 import { Supplier } from '@/supplier/entities/supplier.entity';
-import { SaleReturn } from '@/sale/entities/sale-return.entity';
 import { PurchaseReturnItem } from './purchase-return-item.entity';
 import { CreditNote } from './credit-note.entity';
 import { MerchandiseReplacement } from './merchandise-replacement.entity';
+import { SaleReturn } from '@/sale-return/entities/sale-return.entity';
 
 export enum PurchaseReturnStatus {
   PENDING = 'PENDING',

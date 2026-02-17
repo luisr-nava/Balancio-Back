@@ -308,6 +308,7 @@ export class SaleService {
             item.shopProduct.salePrice ?? item.shopProduct.costPrice;
 
           return {
+            id: item.id,
             product: item.shopProduct.product.name,
             quantity: item.quantity,
             unitPrice: item.unitPrice,
@@ -324,15 +325,15 @@ export class SaleService {
         status: sale.status,
         saleDate: sale.saleDate,
         notes: sale.notes,
-        history:
-          sale.history
-            ?.sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt))
-            .map((h) => ({
-              action: h.action,
-              userId: h.userId,
-              createdAt: h.createdAt,
-              snapshot: h.snapshot,
-            })) ?? [],
+        // history:
+        //   sale.history
+        //     ?.sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt))
+        //     .map((h) => ({
+        //       action: h.action,
+        //       userId: h.userId,
+        //       createdAt: h.createdAt,
+        //       snapshot: h.snapshot,
+        //     })) ?? [],
       })),
       total,
       page,

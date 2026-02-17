@@ -1,49 +1,44 @@
-import {
-  Entity,
-  PrimaryGeneratedColumn,
-  Column,
-  ManyToOne,
-  OneToMany,
-} from 'typeorm';
-import { Sale } from './sale.entity';
-import { SaleReturnItem } from './sale-return-item.entity';
+// import {
+//   Entity,
+//   PrimaryGeneratedColumn,
+//   Column,
+//   ManyToOne,
+//   OneToMany,
+// } from 'typeorm';
+// import { Sale } from './sale.entity';
+// import { SaleReturnItem } from './sale-return-item.entity';
 
-export enum SaleReturnStatus {
-  PENDING = 'PENDING',
-  APPROVED = 'APPROVED',
-  REJECTED = 'REJECTED',
-  PROCESSED = 'PROCESSED',
-}
 
-export enum RefundType {
-  CASH = 'CASH',
-  CREDIT = 'CREDIT',
-  EXCHANGE = 'EXCHANGE',
-}
 
-@Entity()
-export class SaleReturn {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
+// export enum RefundType {
+//   CASH = 'CASH',
+//   CREDIT = 'CREDIT',
+//   EXCHANGE = 'EXCHANGE',
+// }
 
-  @Column()
-  saleId: string;
+// @Entity()
+// export class SaleReturn {
+//   @PrimaryGeneratedColumn('uuid')
+//   id: string;
 
-  @Column({ type: 'enum', enum: SaleReturnStatus })
-  status: SaleReturnStatus;
+//   @Column()
+//   saleId: string;
 
-  @Column({ type: 'enum', enum: RefundType })
-  refundType: RefundType;
+//   @Column({ type: 'enum', enum: SaleReturnStatus })
+//   status: SaleReturnStatus;
 
-  @Column({ nullable: true })
-  reason?: string;
+//   @Column({ type: 'enum', enum: RefundType })
+//   refundType: RefundType;
 
-  @ManyToOne(() => Sale)
-  sale: Sale;
+//   @Column({ nullable: true })
+//   reason?: string;
 
-  @OneToMany(() => SaleReturnItem, (item) => item.saleReturn)
-  items: SaleReturnItem[];
+//   @ManyToOne(() => Sale)
+//   sale: Sale;
 
-  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
-  createdAt: Date;
-}
+//   @OneToMany(() => SaleReturnItem, (item) => item.saleReturn)
+//   items: SaleReturnItem[];
+
+//   @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
+//   createdAt: Date;
+// }

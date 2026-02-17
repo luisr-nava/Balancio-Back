@@ -4,6 +4,7 @@ import { Logger, ValidationPipe } from '@nestjs/common';
 import { envs } from './config';
 import * as bodyParser from 'body-parser';
 import { SeedRunner } from './database/seeds';
+// import { SeedRunner } from './database/seeds';
 
 async function bootstrap() {
   const logger = new Logger('Balancio - Running');
@@ -20,9 +21,10 @@ async function bootstrap() {
   app.use(bodyParser.json());
   app.use(bodyParser.urlencoded({ extended: true }));
   const allowedOrigins = [
-    envs.frontendUrl || 'http://localhost:3000',
-    'http://localhost:3000',
-    'http://localhost:5173', // Vite default
+    envs.frontendUrl,
+    // || 'http://localhost:3000',
+    // 'http://localhost:3000',
+    // 'http://localhost:5173', // Vite default
   ].filter((origin): origin is string => origin !== undefined);
 
   app.enableCors({
@@ -57,8 +59,8 @@ async function bootstrap() {
 
   try {
     await seedRunner.run();
-    logger.verbose(`Server running in port ${envs.port}`);
     await app.listen(envs.port);
+    logger.verbose(`Server running in port ${envs.port}`);
   } catch (error) {
     if (error instanceof Error) {
       logger.error(`❌ El puerto ${envs.port} ya está en uso!`);

@@ -21,7 +21,6 @@ import { PurchaseModule } from './purchase/purchase.module';
 import { PurchaseReturnModule } from './purchase-return/purchase-return.module';
 import { SaleModule } from './sale/sale.module';
 import { SaleReturnModule } from './sale-return/sale-return.module';
-import { StockModule } from './stock/stock.module';
 import { SupplierModule } from './supplier/supplier.module';
 import { SupplierCategoryModule } from './supplier-category/supplier-category.module';
 import { SeedModule } from './database/seeds/seed.module';
@@ -57,13 +56,13 @@ import { CashReportModule } from './cash-report/cash-report.module';
     PurchaseReturnModule,
     SaleModule,
     SaleReturnModule,
-    StockModule,
     SupplierModule,
     SupplierCategoryModule,
     CashMovementModule,
     CashReportModule,
   ],
   controllers: [],
+  
   providers: [],
 })
 export class AppModule {}

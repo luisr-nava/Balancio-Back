@@ -4,13 +4,15 @@ import {
   Column,
   ManyToOne,
   Index,
+  OneToMany,
+  JoinColumn,
 } from 'typeorm';
 import { Expense } from '@/expense/entities/expense.entity';
 import { Income } from '@/income/entities/income.entity';
 import { Purchase } from '@/purchase/entities/purchase.entity';
-import { SaleReturn } from '@/sale/entities/sale-return.entity';
 import { Sale } from '@/sale/entities/sale.entity';
 import { CashMovementType } from '@/cash-register/entities/cash-register.entity';
+import { SaleReturn } from '@/sale-return/entities/sale-return.entity';
 
 @Entity()
 @Index(['cashRegisterId', 'createdAt'])
@@ -67,12 +69,16 @@ export class CashMovement {
   @ManyToOne(() => Purchase, { nullable: true })
   purchase?: Purchase | null;
 
-  @ManyToOne(() => SaleReturn, { nullable: true })
-  saleReturn?: SaleReturn | null;
+  @OneToMany(() => SaleReturn, (saleReturn) => saleReturn.sale)
+  saleReturns?: SaleReturn[];
 
   @ManyToOne(() => Income, { nullable: true })
   income?: Income | null;
 
   @ManyToOne(() => Expense, { nullable: true })
   expense?: Expense | null;
+
+  @ManyToOne(() => SaleReturn, { nullable: true })
+  @JoinColumn({ name: 'saleReturnId' })
+  saleReturn?: SaleReturn | null;
 }

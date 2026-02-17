@@ -55,15 +55,23 @@ export class AnalyticsService {
       timezone,
     );
 
-    const [sales, purchases, incomes, expenses, topProducts, bestSale] =
-      await Promise.all([
-        this.buildModuleSeries(shopId, 'salesTotal', startDate, endDate),
-        this.buildModuleSeries(shopId, 'purchasesTotal', startDate, endDate),
-        this.buildModuleSeries(shopId, 'incomesTotal', startDate, endDate),
-        this.buildModuleSeries(shopId, 'expensesTotal', startDate, endDate),
-        this.buildTopProducts(shopId),
-        this.buildBestSale(shopId),
-      ]);
+    const [
+      sales,
+      purchases,
+      incomes,
+      expenses,
+      saleReturn,
+      topProducts,
+      bestSale,
+    ] = await Promise.all([
+      this.buildModuleSeries(shopId, 'salesTotal', startDate, endDate),
+      this.buildModuleSeries(shopId, 'purchasesTotal', startDate, endDate),
+      this.buildModuleSeries(shopId, 'incomesTotal', startDate, endDate),
+      this.buildModuleSeries(shopId, 'expensesTotal', startDate, endDate),
+      this.buildModuleSeries(shopId, 'saleReturnsTotal', startDate, endDate),
+      this.buildTopProducts(shopId),
+      this.buildBestSale(shopId),
+    ]);
 
     return {
       period,
@@ -71,6 +79,7 @@ export class AnalyticsService {
         from: startDate,
         to: endDate,
       },
+      saleReturn,
       sales,
       purchases,
       incomes,

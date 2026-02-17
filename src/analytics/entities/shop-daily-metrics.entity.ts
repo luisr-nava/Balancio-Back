@@ -1,4 +1,4 @@
-import { Entity, Unique, Index, PrimaryGeneratedColumn, Column } from "typeorm";
+import { Entity, Unique, Index, PrimaryGeneratedColumn, Column } from 'typeorm';
 
 @Entity('shop_daily_metrics')
 @Unique(['shopId', 'date'])
@@ -27,4 +27,7 @@ export class ShopDailyMetrics {
 
   @Column({ type: 'numeric', default: 0 })
   expensesTotal: number;
+
+  @Column({ type: 'decimal', precision: 14, scale: 2, default: 0 })
+  saleReturnsTotal: number;
 }
