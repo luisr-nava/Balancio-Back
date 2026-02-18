@@ -9,6 +9,7 @@ import {
   PrimaryGeneratedColumn,
 } from 'typeorm';
 import { SaleReturnItem } from './sale-return-item.entity';
+import { RefundMethod } from '../enums/refund-method.enum';
 export enum SaleReturnStatus {
   PENDING = 'PENDING',
   APPROVED = 'APPROVED',
@@ -16,12 +17,7 @@ export enum SaleReturnStatus {
   PROCESSED = 'PROCESSED',
   COMPLETED = 'COMPLETED',
 }
-export enum RefundMethod {
-  CASH = 'CASH',
-  CARD = 'CARD',
-  TRANSFER = 'TRANSFER',
-  STORE_CREDIT = 'STORE_CREDIT',
-}
+
 @Entity()
 export class SaleReturn {
   @PrimaryGeneratedColumn('uuid')

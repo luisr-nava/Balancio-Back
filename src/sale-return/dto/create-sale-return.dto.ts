@@ -8,7 +8,7 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { SaleReturnItemDto } from './sale-return-item.dto';
-import { RefundMethod } from '../entities/sale-return.entity';
+import { RefundMethod } from '../enums/refund-method.enum';
 
 export enum ReturnCondition {
   SELLABLE = 'SELLABLE',
