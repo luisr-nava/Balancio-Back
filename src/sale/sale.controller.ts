@@ -18,13 +18,18 @@ import { JwtPayload } from 'jsonwebtoken';
 import { PaginationInterceptor } from '@/common/interceptors/pagination.interceptor';
 import { CancelSaleDto } from './dto/cancel-sale.dto';
 import { JwtAuthGuard } from '@/auth/guards/jwt-auth.guard';
+import { MercadoPagoService } from './mercado-pago.service';
 
 @Controller('sale')
 export class SaleController {
-  constructor(private readonly saleService: SaleService) {}
+  constructor(
+    private readonly saleService: SaleService,
+    private readonly mercadoPagoService: MercadoPagoService,
+  ) {}
   @UseGuards(JwtAuthGuard)
   @Post()
   create(@GetUser() user: JwtPayload, @Body() dto: CreateSaleDto) {
+    console.log('MP TOKEN:', process.env.MP_ACCESS_TOKEN);
     return this.saleService.create(dto, user);
   }
 
@@ -72,5 +77,22 @@ export class SaleController {
     @GetUser() user: JwtPayload,
   ) {
     return this.saleService.cancel(id, dto, user);
+  }
+
+  @Post('webhooks/mercadopago')
+  async mercadoPagoWebhook(@Body() body: any) {
+    if (body.type !== 'payment') return;
+
+    const paymentId = body.data.id;
+
+    const mpPayment = await this.mercadoPagoService.getPayment(paymentId);
+
+    if (mpPayment.status === 'approved') {
+      const saleId = mpPayment.external_reference;
+
+      await this.saleService.markSaleAsPaidFromWebhook(saleId!);
+    }
+
+    return { received: true };
   }
 }

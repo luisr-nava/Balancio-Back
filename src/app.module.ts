@@ -27,6 +27,7 @@ import { SeedModule } from './database/seeds/seed.module';
 import { PrintModule } from './product/print/print.module';
 import { CashMovementModule } from './cash-movement/cash-movement.module';
 import { CashReportModule } from './cash-report/cash-report.module';
+import { PaymentModule } from './payment/payment.module';
 
 @Module({
   imports: [
@@ -60,6 +61,7 @@ import { CashReportModule } from './cash-report/cash-report.module';
     SupplierCategoryModule,
     CashMovementModule,
     CashReportModule,
+    PaymentModule,
   ],
   controllers: [],
   

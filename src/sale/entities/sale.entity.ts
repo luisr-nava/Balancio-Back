@@ -24,6 +24,7 @@ export enum PaymentStatus {
   PARTIAL = 'PARTIAL',
   OVERDUE = 'OVERDUE',
   CANCELLED = 'CANCELLED',
+  MP_PENDING = 'MP_PENDING',
 }
 
 export enum SaleStatus {

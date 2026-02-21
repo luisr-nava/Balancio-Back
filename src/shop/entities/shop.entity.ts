@@ -111,4 +111,20 @@ export class Shop {
 
   @CreateDateColumn()
   createdAt: Date;
+
+  // MP
+  @Column({ type: 'varchar', nullable: true })
+  mpUserId?: string;
+
+  @Column({ type: 'text', nullable: true })
+  mpAccessToken?: string;
+
+  @Column({ type: 'text', nullable: true })
+  mpRefreshToken?: string;
+
+  @Column({ type: 'timestamp', nullable: true })
+  mpTokenExpiresAt?: Date;
+
+  @Column({ type: 'timestamp', nullable: true })
+  mpConnectedAt?: Date;
 }

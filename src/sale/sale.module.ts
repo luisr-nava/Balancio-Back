@@ -12,6 +12,7 @@ import { CashRegisterModule } from '@/cash-register/cash-register.module';
 import { SaleReturnModule } from '@/sale-return/sale-return.module';
 import { SaleReturn } from '@/sale-return/entities/sale-return.entity';
 import { SaleReturnItem } from '@/sale-return/entities/sale-return-item.entity';
+import { MercadoPagoService } from './mercado-pago.service';
 
 @Module({
   imports: [
@@ -29,7 +30,7 @@ import { SaleReturnItem } from '@/sale-return/entities/sale-return-item.entity';
     SaleReturnModule,
   ],
   controllers: [SaleController],
-  providers: [SaleService],
-  exports: [SaleService],
+  providers: [SaleService, MercadoPagoService],
+  exports: [SaleService, MercadoPagoService],
 })
 export class SaleModule {}

@@ -15,6 +15,7 @@ import { CancelSaleDto } from './dto/cancel-sale.dto';
 import { JwtPayload } from 'jsonwebtoken';
 import { CashMovementType } from '@/cash-register/entities/cash-register.entity';
 import { Customer } from '@/customer/entities/customer.entity';
+import { MercadoPagoService } from './mercado-pago.service';
 
 @Injectable()
 export class SaleService {
@@ -33,6 +34,7 @@ export class SaleService {
     @InjectRepository(SaleItemHistory)
     private readonly saleItemHistoryRepo: Repository<SaleItemHistory>,
     private readonly cashRegisterService: CashRegisterService,
+    private readonly mercadoPagoService: MercadoPagoService,
   ) {}
   async create(dto: CreateSaleDto, user: JwtPayload) {
     return this.dataSource.transaction(async (manager) => {
@@ -110,7 +112,7 @@ export class SaleService {
         customer.currentBalance = newBalance;
         await manager.save(customer);
       }
-
+      const paymentStatus = dto.paymentStatus ?? PaymentStatus.PAID;
       // 3️⃣ Crear venta
       const sale = manager.create(Sale, {
         shopId: dto.shopId,
@@ -121,11 +123,14 @@ export class SaleService {
         discountAmount: dto.discountAmount ?? 0,
         taxAmount: saleTaxAmount,
         totalAmount: saleTotal,
-        paymentStatus: dto.paymentStatus ?? PaymentStatus.PAID,
+        paymentStatus,
         invoiceType: dto.invoiceType ?? null,
         invoiceNumber: dto.invoiceNumber ?? null,
         notes: dto.notes ?? null,
-        status: SaleStatus.COMPLETED,
+        status:
+          paymentStatus === PaymentStatus.PAID
+            ? SaleStatus.COMPLETED
+            : SaleStatus.DRAFT,
         saleDate: dto.saleDate ? new Date(dto.saleDate) : new Date(),
       });
 
@@ -186,6 +191,20 @@ export class SaleService {
         );
       }
 
+      if (paymentStatus === PaymentStatus.MP_PENDING) {
+        const preference = await this.mercadoPagoService.createPreference(
+          sale.id,
+          `Venta ${sale.id}`,
+          sale.totalAmount,
+        );
+
+        return {
+          id: sale.id,
+          totalAmount: sale.totalAmount,
+          paymentStatus: sale.paymentStatus,
+          mpInitPoint: preference.init_point,
+        };
+      }
       // 5️⃣ Cash movement SOLO si está paga
       if (sale.paymentStatus === PaymentStatus.PAID) {
         const movement = manager.create(CashMovement, {
@@ -619,6 +638,45 @@ export class SaleService {
       );
 
       return { message: 'Venta cancelada correctamente' };
+    });
+  }
+
+  async markSaleAsPaidFromWebhook(saleId: string) {
+    return this.dataSource.transaction(async (manager) => {
+      const sale = await manager.findOne(Sale, { where: { id: saleId } });
+
+      const cashRegister = await this.cashRegisterService.getCurrentForUser(
+        sale!.shopId,
+        sale!.employeeId!,
+      );
+
+      if (!cashRegister) {
+        throw new BadRequestException(
+          'No hay caja abierta para registrar el pago',
+        );
+      }
+      if (!sale) throw new BadRequestException('Venta no encontrada');
+
+      if (sale.paymentStatus === PaymentStatus.PAID) return;
+
+      sale.paymentStatus = PaymentStatus.PAID;
+      sale.status = SaleStatus.COMPLETED;
+
+      await manager.save(sale);
+      if (!sale.employeeId) {
+        throw new BadRequestException('Venta sin empleado asociado');
+      }
+      const movement = manager.create(CashMovement, {
+        cashRegisterId: cashRegister.id,
+        shopId: sale.shopId,
+        userId: sale.employeeId,
+        type: CashMovementType.INCOME,
+        amount: sale.totalAmount,
+        description: `Pago MP venta ${sale.id}`,
+        saleId: sale.id,
+      });
+
+      await manager.save(movement);
     });
   }
 }
