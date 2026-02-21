@@ -10,10 +10,11 @@ import {
 } from '@nestjs/common';
 import { NotificationService } from './notification.service';
 import { CreateNotificationDto } from './dto/create-notification.dto';
-import { UpdateNotificationDto } from './dto/update-notification.dto';
+import { UpdateNotificationPreferenceDto } from './dto/update-notification.dto';
 import { JwtAuthGuard } from '@/auth/guards/jwt-auth.guard';
 import { JwtPayload } from 'jsonwebtoken';
 import { GetUser } from '@/auth/decorators/get-user.decorators';
+import { NotificationType } from './entities/notification.entity';
 
 interface AuthUser {
   id: string;
@@ -41,5 +42,24 @@ export class NotificationController {
   async markAllAsRead(@GetUser() user: AuthUser) {
     await this.notificationService.markAllAsRead(user.id);
     return { message: 'All notifications marked as read' };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('preferences')
+  async getPreferences(@GetUser() user: JwtPayload) {
+    return this.notificationService.getUserPreferences(user.id);
+  }
+  @UseGuards(JwtAuthGuard)
+  @Patch('preferences/:type')
+  async updatePreference(
+    @GetUser() user: JwtPayload,
+    @Param('type') type: NotificationType,
+    @Body() dto: UpdateNotificationPreferenceDto,
+  ) {
+    return this.notificationService.updateUserPreference(
+      user.id,
+      type,
+      dto.enabled,
+    );
   }
 }

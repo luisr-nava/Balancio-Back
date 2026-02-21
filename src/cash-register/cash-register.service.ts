@@ -12,6 +12,14 @@ import { JwtPayload } from 'jsonwebtoken';
 import { CashMovementService } from '@/cash-movement/cash-movement.service';
 import { CashMovement } from '@/cash-movement/entities/cash-movement.entity';
 import { ShopService } from '@/shop/shop.service';
+
+import { NotificationService } from '@/notification/notification.service';
+import {
+  NotificationSeverity,
+  NotificationType,
+} from '@/notification/entities/notification.entity';
+import { User, UserRole } from '@/auth/entities/user.entity';
+
 @Injectable()
 export class CashRegisterService {
   constructor(
@@ -22,6 +30,7 @@ export class CashRegisterService {
     private readonly cashMovementRepo: Repository<CashMovement>,
     private readonly cashMovementService: CashMovementService,
     private readonly shopService: ShopService,
+    private readonly notificationService: NotificationService,
   ) {}
   async open(dto: OpenCashRegisterDto, user: JwtPayload) {
     // 1️⃣ Validar que el usuario no tenga otra caja abierta (en ESA tienda)
@@ -114,7 +123,41 @@ export class CashRegisterService {
       status: CashRegisterStatus.CLOSED,
     });
 
-    return this.repo.save(cashRegister);
+    await this.repo.save(cashRegister);
+    const users = await this.repo.manager.find(User, {
+      relations: {
+        userShops: true,
+      },
+      where: {
+        userShops: {
+          shopId,
+        },
+      },
+    });
+
+    // 🔐 Filtrar OWNER y MANAGER
+    const recipients = users.filter((u) =>
+      [UserRole.OWNER, UserRole.MANAGER].includes(u.role),
+    );
+
+    for (const recipient of recipients) {
+      const isOwner = recipient.role === UserRole.OWNER;
+
+      await this.notificationService.createNotification({
+        userId: recipient.id,
+        shopId,
+        type: NotificationType.CASH_CLOSED,
+        message: isOwner
+          ? `Caja cerrada por ${user.fullName} - Total $${expectedAmount}. Puede descargar el reporte desde el panel.`
+          : `Caja cerrada por ${user.fullName} - Total $${expectedAmount}`,
+        severity: NotificationSeverity.INFO,
+      });
+    }
+
+    return {
+      message: 'Caja cerrada correctamente',
+      cashRegister,
+    };
   }
 
   async getAll(

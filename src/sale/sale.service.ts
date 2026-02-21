@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { CreateSaleDto } from './dto/create-sale.dto';
 import { UpdateSaleDto } from './dto/update-sale.dto';
-import { Between, DataSource, In, Repository } from 'typeorm';
+import { Between, DataSource, In, MoreThanOrEqual, Repository } from 'typeorm';
 import { PaymentStatus, Sale, SaleStatus } from './entities/sale.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { SaleItem } from './entities/sale-item.entity';
@@ -16,6 +16,12 @@ import { JwtPayload } from 'jsonwebtoken';
 import { CashMovementType } from '@/cash-register/entities/cash-register.entity';
 import { Customer } from '@/customer/entities/customer.entity';
 import { MercadoPagoService } from './mercado-pago.service';
+import { NotificationService } from '@/notification/notification.service';
+import {
+  NotificationSeverity,
+  NotificationType,
+} from '@/notification/entities/notification.entity';
+import { User, UserRole } from '@/auth/entities/user.entity';
 
 @Injectable()
 export class SaleService {
@@ -35,6 +41,8 @@ export class SaleService {
     private readonly saleItemHistoryRepo: Repository<SaleItemHistory>,
     private readonly cashRegisterService: CashRegisterService,
     private readonly mercadoPagoService: MercadoPagoService,
+
+    private readonly notificationService: NotificationService,
   ) {}
   async create(dto: CreateSaleDto, user: JwtPayload) {
     return this.dataSource.transaction(async (manager) => {
@@ -136,10 +144,14 @@ export class SaleService {
 
       await manager.save(sale);
 
+      let shopUsers: User[] | null = null;
       // 4️⃣ Items + stock + history
       for (const item of dto.items) {
         const shopProduct = await manager.findOne(ShopProduct, {
           where: { id: item.shopProductId, shopId: dto.shopId },
+          relations: {
+            product: true,
+          },
         });
 
         if (!shopProduct) {
@@ -172,9 +184,43 @@ export class SaleService {
         await manager.save(saleItem);
 
         // stock ↓
-        shopProduct.stock = (shopProduct.stock ?? 0) - quantity;
-        await manager.save(shopProduct);
+        const previousStock = shopProduct.stock ?? 0;
 
+        if (previousStock < quantity) {
+          throw new BadRequestException(
+            `Stock insuficiente para ${shopProduct.product.name}. Disponible: ${previousStock}`,
+          );
+        }
+        const result = await manager.decrement(
+          ShopProduct,
+          {
+            id: shopProduct.id,
+            stock: MoreThanOrEqual(quantity),
+          },
+          'stock',
+          quantity,
+        );
+
+        if (result.affected === 0) {
+          throw new BadRequestException(
+            `Stock insuficiente para ${shopProduct.product.name}`,
+          );
+        }
+
+        // 🔥 Volver a leer el stock actualizado
+        const updatedProduct = await manager.findOne(ShopProduct, {
+          where: { id: shopProduct.id },
+          relations: { product: true },
+        });
+
+        if (!updatedProduct) {
+          throw new BadRequestException(
+            'Producto no encontrado tras actualizar',
+          );
+        }
+        console.log('ANTES:', previousStock);
+        console.log('CANTIDAD:', quantity);
+        console.log('DESPUÉS:', shopProduct.stock);
         // item history
         await manager.save(
           manager.create(SaleItemHistory, {
@@ -189,6 +235,33 @@ export class SaleService {
             },
           }),
         );
+        if (previousStock > 5 && (updatedProduct.stock ?? 0) <= 5) {
+          if (!shopUsers) {
+            shopUsers = await manager.find(User, {
+              relations: {
+                userShops: true,
+              },
+              where: {
+                userShops: {
+                  shopId: dto.shopId,
+                },
+              },
+            });
+          }
+
+          for (const u of shopUsers) {
+            await this.notificationService.createNotification(
+              {
+                userId: u.id,
+                shopId: dto.shopId,
+                type: NotificationType.LOW_STOCK,
+                message: `Producto ${shopProduct.product.name} bajo stock (${shopProduct.stock} unidades restantes)`,
+                severity: NotificationSeverity.WARNING,
+              },
+              manager,
+            );
+          }
+        }
       }
 
       if (paymentStatus === PaymentStatus.MP_PENDING) {
@@ -636,6 +709,37 @@ export class SaleService {
           },
         }),
       );
+
+      // 🔔 Buscar usuarios vinculados a la tienda
+      const users = await manager.find(User, {
+        relations: {
+          userShops: true,
+        },
+        where: {
+          userShops: {
+            shopId: sale.shopId,
+          },
+        },
+      });
+
+      // 🔐 Filtrar OWNER y MANAGER
+      const recipients = users.filter((u) =>
+        [UserRole.OWNER, UserRole.MANAGER].includes(u.role),
+      );
+
+      // 🔔 Crear notificación para cada uno
+      for (const recipient of recipients) {
+        await this.notificationService.createNotification(
+          {
+            userId: recipient.id,
+            shopId: sale.shopId,
+            type: NotificationType.SALE_CANCELED,
+            message: `Venta ${sale.id} anulada por $${sale.totalAmount}`,
+            severity: NotificationSeverity.INFO,
+          },
+          manager,
+        );
+      }
 
       return { message: 'Venta cancelada correctamente' };
     });
