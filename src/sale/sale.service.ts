@@ -22,6 +22,8 @@ import {
   NotificationType,
 } from '@/notification/entities/notification.entity';
 import { User, UserRole } from '@/auth/entities/user.entity';
+import { ReceiptService } from './receipt/receipt.service';
+import { Shop } from '@/shop/entities/shop.entity';
 
 @Injectable()
 export class SaleService {
@@ -43,6 +45,7 @@ export class SaleService {
     private readonly mercadoPagoService: MercadoPagoService,
 
     private readonly notificationService: NotificationService,
+    private readonly receiptService: ReceiptService,
   ) {}
   async create(dto: CreateSaleDto, user: JwtPayload) {
     return this.dataSource.transaction(async (manager) => {
@@ -143,7 +146,32 @@ export class SaleService {
       });
 
       await manager.save(sale);
+      // 🔒 3.1️⃣ Generar Receipt inmediatamente después de crear la venta
 
+      const shop = await manager.findOne(Shop, {
+        where: { id: dto.shopId },
+        lock: { mode: 'pessimistic_write' }, // evita duplicación de numeración
+      });
+
+      if (!shop) {
+        throw new BadRequestException('Shop not found');
+      }
+
+      // 🔢 Obtener número actual
+      const receiptNumber = shop.receiptSequence;
+
+      // 🔢 Incrementar secuencia
+      shop.receiptSequence += 1;
+      await manager.save(shop);
+
+      // 🧾 Crear receipt dentro de la misma transacción
+      const receipt = await this.receiptService.createReceipt(
+        manager,
+        sale,
+        shop,
+        receiptNumber,
+        dto.paperSize,
+      );
       let shopUsers: User[] | null = null;
       // 4️⃣ Items + stock + history
       for (const item of dto.items) {
@@ -314,12 +342,15 @@ export class SaleService {
           },
         }),
       );
+      const pdfBuffer = await this.receiptService.generatePdf(receipt.id);
 
+      const receiptBase64 = pdfBuffer.toString('base64');
       return {
-        id: sale.id,
+        saleId: sale.id,
         totalAmount: sale.totalAmount,
         paymentStatus: sale.paymentStatus,
         saleDate: sale.saleDate,
+        receipt: receiptBase64,
       };
     });
   }

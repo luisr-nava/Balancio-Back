@@ -14,6 +14,7 @@ import { SaleReturn } from '@/sale-return/entities/sale-return.entity';
 import { SaleReturnItem } from '@/sale-return/entities/sale-return-item.entity';
 import { MercadoPagoService } from './mercado-pago.service';
 import { NotificationModule } from '@/notification/notification.module';
+import { ReceiptModule } from './receipt/receipt.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { NotificationModule } from '@/notification/notification.module';
     CashRegisterModule, // 👈 obligatorio para validar caja abierta/cerrada
     SaleReturnModule,
     NotificationModule,
+    ReceiptModule,
   ],
   controllers: [SaleController],
   providers: [SaleService, MercadoPagoService],

@@ -11,6 +11,7 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { InvoiceType, PaymentStatus } from '../entities/sale.entity';
+import { ReceiptPaperSize } from '../receipt/types/receipt.types';
 
 export class CreateSaleItemDto {
   @IsUUID()
@@ -90,4 +91,8 @@ export class CreateSaleDto {
   @IsOptional()
   @IsDateString()
   saleDate?: string;
+
+  @IsOptional()
+  @IsEnum(ReceiptPaperSize)
+  paperSize?: ReceiptPaperSize;
 }

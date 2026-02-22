@@ -127,4 +127,10 @@ export class Shop {
 
   @Column({ type: 'timestamp', nullable: true })
   mpConnectedAt?: Date;
+
+  @Column({ default: 'STANDARD' })
+  receiptMode: 'STANDARD' | 'FISCAL';
+
+  @Column({ type: 'bigint', default: 1 })
+  receiptSequence: number;
 }
