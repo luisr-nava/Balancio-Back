@@ -28,7 +28,7 @@ export class ReceiptService {
       saleId: sale.id,
       shopId: shop.id,
       snapshot,
-      receiptNumber,
+      receiptNumber: receiptNumber.toString(),
       paperSize,
     });
 
@@ -45,7 +45,6 @@ export class ReceiptService {
     }
 
     const generator = ReceiptPdfFactory.create(receipt.paperSize);
-
     return generator.generate(receipt.snapshot);
   }
 }

@@ -24,6 +24,7 @@ import {
 import { User, UserRole } from '@/auth/entities/user.entity';
 import { ReceiptService } from './receipt/receipt.service';
 import { Shop } from '@/shop/entities/shop.entity';
+import { ReceiptPdfFactory } from './receipt/pdf/receipt-pdf.factory';
 
 @Injectable()
 export class SaleService {
@@ -148,30 +149,6 @@ export class SaleService {
       await manager.save(sale);
       // 🔒 3.1️⃣ Generar Receipt inmediatamente después de crear la venta
 
-      const shop = await manager.findOne(Shop, {
-        where: { id: dto.shopId },
-        lock: { mode: 'pessimistic_write' }, // evita duplicación de numeración
-      });
-
-      if (!shop) {
-        throw new BadRequestException('Shop not found');
-      }
-
-      // 🔢 Obtener número actual
-      const receiptNumber = shop.receiptSequence;
-
-      // 🔢 Incrementar secuencia
-      shop.receiptSequence += 1;
-      await manager.save(shop);
-
-      // 🧾 Crear receipt dentro de la misma transacción
-      const receipt = await this.receiptService.createReceipt(
-        manager,
-        sale,
-        shop,
-        receiptNumber,
-        dto.paperSize,
-      );
       let shopUsers: User[] | null = null;
       // 4️⃣ Items + stock + history
       for (const item of dto.items) {
@@ -246,9 +223,7 @@ export class SaleService {
             'Producto no encontrado tras actualizar',
           );
         }
-        console.log('ANTES:', previousStock);
-        console.log('CANTIDAD:', quantity);
-        console.log('DESPUÉS:', shopProduct.stock);
+
         // item history
         await manager.save(
           manager.create(SaleItemHistory, {
@@ -342,9 +317,54 @@ export class SaleService {
           },
         }),
       );
-      const pdfBuffer = await this.receiptService.generatePdf(receipt.id);
+
+      // 🔒 Generar Receipt DESPUÉS de tener los items creados
+
+      // 🔁 Recargar la venta con relaciones
+
+      const shop = await manager.findOne(Shop, {
+        where: { id: dto.shopId },
+        lock: { mode: 'pessimistic_write' },
+      });
+
+      if (!shop) {
+        throw new BadRequestException('Shop not found');
+      }
+
+      const receiptNumber = shop.receiptSequence;
+      shop.receiptSequence += 1;
+      await manager.save(shop);
+
+      // 🔁 Recargar venta con items reales
+      const saleWithItems = await manager.findOne(Sale, {
+        where: { id: sale.id },
+        relations: {
+          items: {
+            shopProduct: {
+              product: true,
+            },
+          },
+        },
+      });
+
+      if (!saleWithItems) {
+        throw new BadRequestException('Sale not found after creation');
+      }
+
+      const receipt = await this.receiptService.createReceipt(
+        manager,
+        saleWithItems,
+        shop,
+        receiptNumber,
+        dto.paperSize,
+      );
+
+      const pdfBuffer = await ReceiptPdfFactory.create(
+        receipt.paperSize,
+      ).generate(receipt.snapshot);
 
       const receiptBase64 = pdfBuffer.toString('base64');
+
       return {
         saleId: sale.id,
         totalAmount: sale.totalAmount,

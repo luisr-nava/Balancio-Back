@@ -20,8 +20,8 @@ export class SaleReceipt {
   @Column({ type: 'jsonb' })
   snapshot: ReceiptSnapshot;
 
-  @Column()
-  receiptNumber: number;
+  @Column({ type: 'bigint' })
+  receiptNumber: string;
 
   @CreateDateColumn()
   createdAt: Date;
