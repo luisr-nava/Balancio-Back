@@ -21,10 +21,9 @@ async function bootstrap() {
   app.use(bodyParser.json());
   app.use(bodyParser.urlencoded({ extended: true }));
   const allowedOrigins = [
-    envs.frontendUrl,
-    // || 'http://localhost:3000',
-    // 'http://localhost:3000',
-    // 'http://localhost:5173', // Vite default
+    envs.frontendUrl || 'http://localhost:3000',
+    'http://localhost:3001',
+    'http://localhost:5173', // Vite default
   ].filter((origin): origin is string => origin !== undefined);
 
   app.enableCors({

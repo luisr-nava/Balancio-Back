@@ -12,6 +12,7 @@ import {
   SaleSubscriber,
 } from './subscribers/analytics.subscriber';
 import { Sale } from '@/sale/entities/sale.entity';
+import { ShopProduct } from '@/product/entities/shop-product.entity';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { Sale } from '@/sale/entities/sale.entity';
       ShopProductStats,
       ShopStats,
       Sale,
+      ShopProduct,
     ]),
   ],
   providers: [

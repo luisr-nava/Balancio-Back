@@ -30,4 +30,7 @@ export class ShopDailyMetrics {
 
   @Column({ type: 'decimal', precision: 14, scale: 2, default: 0 })
   saleReturnsTotal: number;
+
+  @Column({ type: 'int', default: 0 })
+  purchasesCount: number;
 }

@@ -53,6 +53,10 @@ async function applyDelta(
     daily.salesCount = Number(daily.salesCount ?? 0) + countDelta;
   }
 
+  if (field === 'purchasesTotal') {
+    daily.purchasesCount = Number(daily.purchasesCount ?? 0) + countDelta;
+  }
+
   await repo.save(daily);
 }
 
@@ -330,7 +334,6 @@ export class PurchaseSubscriber implements EntitySubscriberInterface<Purchase> {
     return Purchase;
   }
 
-  
   async afterInsert(event: InsertEvent<Purchase>) {
     const purchase = event.entity;
     if (!purchase) return;
@@ -341,6 +344,7 @@ export class PurchaseSubscriber implements EntitySubscriberInterface<Purchase> {
       purchase.purchaseDate,
       'purchasesTotal',
       purchase.totalAmount ?? 0,
+      1,
     );
   }
 
@@ -354,6 +358,7 @@ export class PurchaseSubscriber implements EntitySubscriberInterface<Purchase> {
       purchase.purchaseDate,
       'purchasesTotal',
       -(purchase.totalAmount ?? 0),
+      -1, // 👈 AGREGAR
     );
   }
 

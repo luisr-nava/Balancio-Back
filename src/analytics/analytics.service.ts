@@ -14,6 +14,7 @@ import { ShopDailyMetrics } from './entities/shop-daily-metrics.entity';
 import { ShopProductStats } from './entities/shop-product-stats.entity';
 import { ShopStats } from './entities/shop_stats.entity';
 import { Sale } from '@/sale/entities/sale.entity';
+import { ShopProduct } from '@/product/entities/shop-product.entity';
 
 export type PeriodType = 'day' | 'week' | 'month' | 'year';
 
@@ -39,6 +40,8 @@ export class AnalyticsService {
 
     @InjectRepository(Sale)
     private readonly saleRepo: Repository<Sale>,
+    @InjectRepository(ShopProduct)
+    private readonly shopProductRepo: Repository<ShopProduct>,
   ) {}
 
   async getShopDashboardAnalytics(
@@ -63,6 +66,8 @@ export class AnalyticsService {
       saleReturn,
       topProducts,
       bestSale,
+      summary,
+      totalProducts,
     ] = await Promise.all([
       this.buildModuleSeries(shopId, 'salesTotal', startDate, endDate),
       this.buildModuleSeries(shopId, 'purchasesTotal', startDate, endDate),
@@ -71,6 +76,8 @@ export class AnalyticsService {
       this.buildModuleSeries(shopId, 'saleReturnsTotal', startDate, endDate),
       this.buildTopProducts(shopId),
       this.buildBestSale(shopId),
+      this.buildSummary(shopId, startDate, endDate),
+      this.buildTotalProducts(shopId),
     ]);
 
     return {
@@ -79,6 +86,7 @@ export class AnalyticsService {
         from: startDate,
         to: endDate,
       },
+      summary,
       saleReturn,
       sales,
       purchases,
@@ -86,6 +94,7 @@ export class AnalyticsService {
       expenses,
       topProducts,
       bestSale,
+      totalProducts,
     };
   }
 
@@ -196,5 +205,61 @@ export class AnalyticsService {
 
   private normalizeDate(date: Date): string {
     return date.toISOString().split('T')[0];
+  }
+
+  private async buildSummary(shopId: string, startDate: Date, endDate: Date) {
+    const records = await this.dailyRepo.find({
+      where: {
+        shopId,
+        date: Between(
+          this.normalizeDate(startDate),
+          this.normalizeDate(endDate),
+        ),
+      },
+    });
+
+    const totals = records.reduce(
+      (acc, r) => {
+        acc.sales += Number(r.salesTotal ?? 0);
+        acc.saleReturns += Number(r.saleReturnsTotal ?? 0); // 👈 NUEVO
+        acc.expenses += Number(r.expensesTotal ?? 0);
+        acc.incomes += Number(r.incomesTotal ?? 0);
+        acc.purchases += Number(r.purchasesTotal ?? 0);
+        acc.salesCount += Number(r.salesCount ?? 0);
+        acc.purchasesCount += Number(r.purchasesCount ?? 0);
+        return acc;
+      },
+      {
+        sales: 0,
+        saleReturns: 0, // 👈 NUEVO
+        expenses: 0,
+        incomes: 0,
+        purchases: 0,
+        salesCount: 0,
+        purchasesCount: 0,
+      },
+    );
+
+    const netSales = totals.sales - totals.saleReturns;
+
+    const balance =
+      netSales + totals.incomes - totals.expenses - totals.purchases;
+
+    return {
+      totalSales: totals.sales,
+      totalSaleReturns: totals.saleReturns,
+      netSales,
+      totalExpenses: totals.expenses,
+      totalIncomes: totals.incomes,
+      balance,
+      totalPurchases: totals.purchasesCount,
+      totalSalesCount: totals.salesCount,
+    };
+  }
+
+  private async buildTotalProducts(shopId: string) {
+    return this.shopProductRepo.count({
+      where: { shopId },
+    });
   }
 }
