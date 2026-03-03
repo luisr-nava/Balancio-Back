@@ -5,10 +5,12 @@ import {
   ManyToOne,
   OneToMany,
   Unique,
+  JoinColumn,
 } from 'typeorm';
 import { Product } from './product.entity';
 import { Shop } from '@/shop/entities/shop.entity';
 import { ProductHistory } from './product-history.entity';
+import { Supplier } from '@/supplier/entities/supplier.entity';
 
 @Entity()
 @Unique(['shopId', 'barcode'])
@@ -65,7 +67,10 @@ export class ShopProduct {
   @Column({ type: 'uuid', nullable: true })
   supplierId: string | null;
 
+  @ManyToOne(() => Supplier, { nullable: true })
+  @JoinColumn({ name: 'supplierId' })
+  supplier?: Supplier | null;
+
   @Column({ type: 'text' })
   barcode: string;
-
 }

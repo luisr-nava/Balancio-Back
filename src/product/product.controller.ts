@@ -42,20 +42,34 @@ export class ProductController {
     return this.productService.create(createProductDto, user, image);
   }
 
-  @UseInterceptors(PaginationInterceptor)
   @UseGuards(JwtAuthGuard)
+  @UseInterceptors(PaginationInterceptor)
   @Get()
   async getAll(
     @GetUser() user: JwtPayload,
     @Param('shopId') shopId?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @Query('minStock') minStock?: string,
+    @Query('maxStock') maxStock?: string,
+    @Query('search') search?: string,
+    @Query('sortByCode') sortByCode?: 'ASC' | 'DESC',
+    @Query('sortByStock') sortByStock?: 'ASC' | 'DESC',
+    @Query('sortByPrice') sortByPrice?: 'ASC' | 'DESC',
+    @Query('supplierId') supplierId?: string,
   ) {
     return this.productService.getAll(
       shopId,
       user,
       Number(page ?? 1),
       Number(limit ?? 20),
+      minStock ? Number(minStock) : undefined,
+      maxStock ? Number(maxStock) : undefined,
+      search,
+      sortByCode,
+      supplierId,
+      sortByStock,
+      sortByPrice,
     );
   }
 

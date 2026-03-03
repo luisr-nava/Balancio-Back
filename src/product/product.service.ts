@@ -161,29 +161,64 @@ export class ProductService {
     user: JwtPayload,
     page = 1,
     limit = 20,
+    minStock?: number,
+    maxStock?: number,
+    search?: string,
+    sortByCode?: 'ASC' | 'DESC',
+    supplierId?: string,
+    sortByStock?: 'ASC' | 'DESC',
+    sortByPrice?: 'ASC' | 'DESC',
   ) {
-    const [data, total] = await this.productRepository.findAndCount({
+    const products = await this.productRepository.find({
       relations: {
         measurementUnit: true,
         shopProducts: {
           shop: true,
           productHistories: true,
+          supplier: true, // 👈 Asegurate de tener esta relación
         },
       },
-      skip: (page - 1) * limit,
-      take: limit,
       order: {
         createdAt: 'DESC',
       },
     });
 
-    const transformed = data
+    let filteredProducts = products;
+
+    // 🔎 Buscar por nombre
+    if (search) {
+      const searchLower = search.toLowerCase();
+      filteredProducts = filteredProducts.filter((p) =>
+        p.name.toLowerCase().includes(searchLower),
+      );
+    }
+
+    // 🏢 Filtrar por proveedor
+    if (supplierId) {
+      filteredProducts = filteredProducts.filter((product) =>
+        product.shopProducts.some((sp) => sp.supplierId === supplierId),
+      );
+    }
+
+    let transformed = filteredProducts
       .map((product) => {
-        const shopProducts = shopId
+        let shopProducts = shopId
           ? product.shopProducts.filter((sp) => sp.shopId === shopId)
           : product.shopProducts;
 
+        // Siempre solo stock disponible
+        shopProducts = shopProducts.filter((sp) => sp.stock! > 0);
+
+        if (typeof minStock === 'number') {
+          shopProducts = shopProducts.filter((sp) => sp.stock! >= minStock);
+        }
+
+        if (typeof maxStock === 'number') {
+          shopProducts = shopProducts.filter((sp) => sp.stock! <= maxStock);
+        }
+
         if (!shopProducts.length) return null;
+        const selectedShopProduct = shopProducts[0];
 
         return {
           id: product.id,
@@ -191,9 +226,14 @@ export class ProductService {
           description: product.description,
           imageUrl: product.imageUrl ?? null,
           measurementUnit: product.measurementUnit?.name,
-
+          supplier: selectedShopProduct?.supplier
+            ? {
+                id: selectedShopProduct.supplier.id,
+                name: selectedShopProduct.supplier.name,
+              }
+            : null,
           shops: shopProducts.map((sp) => ({
-            shopProductId: sp.id, 
+            shopProductId: sp.id,
             id: sp.shop.id,
             name: sp.shop.name,
             currency: sp.currency,
@@ -201,32 +241,50 @@ export class ProductService {
             costPrice: sp.costPrice,
             salePrice: sp.salePrice,
             stock: sp.stock,
-
-            history: sp.productHistories
-              .sort((a, b) => +b.createdAt - +a.createdAt)
-              .map((h) => ({
-                changeType: h.changeType,
-                previousStock: h.previousStock,
-                newStock: h.newStock,
-                previousCost: h.previousCost,
-                newCost: h.newCost,
-                note: h.note,
-                createdAt: h.createdAt,
-              })),
+            history: sp.productHistories,
           })),
         };
       })
-      .filter(Boolean);
+      .filter((p): p is NonNullable<typeof p> => p !== null);
+    // 🔢 Orden por código
+    if (sortByCode) {
+      transformed.sort((a, b) => {
+        const codeA = a.shops[0]?.barcode ?? '';
+        const codeB = b.shops[0]?.barcode ?? '';
 
+        return sortByCode === 'ASC'
+          ? codeA.localeCompare(codeB)
+          : codeB.localeCompare(codeA);
+      });
+    }
+
+    // 📦 Orden por stock
+    if (sortByStock) {
+      transformed.sort((a, b) => {
+        const stockA = a.shops[0]?.stock ?? 0;
+        const stockB = b.shops[0]?.stock ?? 0;
+
+        return sortByStock === 'ASC' ? stockA - stockB : stockB - stockA;
+      });
+    }
+
+    // 💰 Orden por precio (salePrice)
+    if (sortByPrice) {
+      transformed.sort((a, b) => {
+        const priceA = a.shops[0]?.salePrice ?? 0;
+        const priceB = b.shops[0]?.salePrice ?? 0;
+
+        return sortByPrice === 'ASC' ? priceA - priceB : priceB - priceA;
+      });
+    }
+
+    const total = transformed.length;
+
+    const paginated = transformed.slice((page - 1) * limit, page * limit);
 
     return {
-      data: transformed,
-      pagination: {
-        total: transformed.length,
-        page,
-        limit,
-        totalPages: Math.ceil(transformed.length / limit),
-      },
+      data: paginated,
+      total,
     };
   }
 
