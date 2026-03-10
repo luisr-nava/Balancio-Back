@@ -89,16 +89,10 @@ export class ProductService {
           throw new ConflictException('Moneda de la tienda no encontrada');
         }
 
-        const barcode = await this.resolveBarcodeForShop(
-          queryRunner,
-          shop.shopId,
-          dto.barcode,
-        );
-
         const shopProduct = queryRunner.manager.create(ShopProduct, {
           productId: savedProduct.id,
           shopId: shop.shopId,
-          barcode,
+          barcode: dto.barcode,
           categoryId: shop.categoryId ?? null,
           supplierId: shop.supplierId ?? null,
           costPrice: shop.costPrice,
@@ -225,7 +219,13 @@ export class ProductService {
           name: product.name,
           description: product.description,
           imageUrl: product.imageUrl ?? null,
-          measurementUnit: product.measurementUnit?.name,
+          barcode: product.barcode,
+          measurementUnit: product.measurementUnit
+            ? {
+                id: product.measurementUnit.id,
+                name: product.measurementUnit.name,
+              }
+            : null,
           supplier: selectedShopProduct?.supplier
             ? {
                 id: selectedShopProduct.supplier.id,
@@ -237,7 +237,6 @@ export class ProductService {
             id: sp.shop.id,
             name: sp.shop.name,
             currency: sp.currency,
-            barcode: sp.barcode,
             costPrice: sp.costPrice,
             salePrice: sp.salePrice,
             stock: sp.stock,
@@ -246,17 +245,6 @@ export class ProductService {
         };
       })
       .filter((p): p is NonNullable<typeof p> => p !== null);
-    // 🔢 Orden por código
-    if (sortByCode) {
-      transformed.sort((a, b) => {
-        const codeA = a.shops[0]?.barcode ?? '';
-        const codeB = b.shops[0]?.barcode ?? '';
-
-        return sortByCode === 'ASC'
-          ? codeA.localeCompare(codeB)
-          : codeB.localeCompare(codeA);
-      });
-    }
 
     // 📦 Orden por stock
     if (sortByStock) {
@@ -320,6 +308,14 @@ export class ProductService {
       if (!dto.shops?.length) {
         throw new ConflictException('Debe especificar al menos una tienda');
       }
+      Object.assign(product, {
+        name: dto.name ?? product.name,
+        description: dto.description ?? product.description,
+        barcode: dto.barcode ?? product.barcode,
+        measurementUnitId: dto.measurementUnitId ?? product.measurementUnitId,
+      });
+
+      await queryRunner.manager.save(Product, product);
 
       for (const shopDto of dto.shops) {
         const shopProduct = await queryRunner.manager.findOne(ShopProduct, {
@@ -333,21 +329,6 @@ export class ProductService {
           throw new ConflictException(
             `El producto no existe en la tienda ${shopDto.shopId}`,
           );
-        }
-
-        if (shopDto.barcode && shopDto.barcode !== shopProduct.barcode) {
-          const exists = await queryRunner.manager.exists(ShopProduct, {
-            where: {
-              shopId: shopDto.shopId,
-              barcode: shopDto.barcode,
-            },
-          });
-
-          if (exists) {
-            throw new ConflictException(
-              `El código de barras ya existe en la tienda ${shopDto.shopId}`,
-            );
-          }
         }
 
         await queryRunner.manager.save(
@@ -368,7 +349,6 @@ export class ProductService {
           costPrice: shopDto.costPrice ?? shopProduct.costPrice,
           salePrice: shopDto.salePrice ?? shopProduct.salePrice,
           stock: shopDto.stock ?? shopProduct.stock,
-          barcode: shopDto.barcode ?? shopProduct.barcode,
           categoryId: shopDto.categoryId ?? shopProduct.categoryId,
           supplierId: shopDto.supplierId ?? shopProduct.supplierId,
         });

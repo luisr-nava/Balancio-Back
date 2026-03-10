@@ -66,11 +66,13 @@ export class PrintController {
       throw new NotFoundException('No se encontraron productos para imprimir');
     }
 
-    const items = shopProducts.map((sp) => ({
-      barcode: sp.barcode,
-      productName: sp.product.name,
-      shopName: sp.shop.name,
-    }));
+    const items = shopProducts
+      .filter((sp) => sp.product?.barcode)
+      .map((sp) => ({
+        barcode: sp.product.barcode!,
+        productName: sp.product.name,
+        shopName: sp.shop.name,
+      }));
 
     const pdf = await this.printService.generateBarcodePdf(items, {
       format: dto.format,
@@ -111,7 +113,7 @@ export class PrintController {
       shopName: sp.shop.name,
       price: sp.salePrice,
       currency: sp.currency,
-      barcode: sp.barcode,
+      barcode: sp.product.barcode,
     }));
 
     const pdf = await this.printService.generatePriceLabelsPdf(items, {

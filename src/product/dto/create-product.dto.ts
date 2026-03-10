@@ -14,10 +14,6 @@ class CreateProductShopDto {
   @IsUUID()
   shopId: string;
 
-  @IsOptional()
-  @IsString()
-  barcode?: string;
-
   @Type(() => Number)
   @IsNumber()
   costPrice: number;
@@ -87,6 +83,4 @@ export class CreateProductDto {
   @ValidateNested({ each: true })
   @Type(() => CreateProductShopDto)
   shops: CreateProductShopDto[];
-
-
 }

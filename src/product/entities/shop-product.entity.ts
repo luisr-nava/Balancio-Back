@@ -13,7 +13,6 @@ import { ProductHistory } from './product-history.entity';
 import { Supplier } from '@/supplier/entities/supplier.entity';
 
 @Entity()
-@Unique(['shopId', 'barcode'])
 @Unique(['shopId', 'productId'])
 export class ShopProduct {
   @PrimaryGeneratedColumn('uuid')
@@ -70,7 +69,4 @@ export class ShopProduct {
   @ManyToOne(() => Supplier, { nullable: true })
   @JoinColumn({ name: 'supplierId' })
   supplier?: Supplier | null;
-
-  @Column({ type: 'text' })
-  barcode: string;
 }
