@@ -51,6 +51,9 @@ export class Shop {
   @Column({ nullable: true })
   phone?: string;
 
+  @Column({ nullable: true })
+  logo?: string;
+
   @Column({ default: 'US' })
   countryCode: string;
 

@@ -10,6 +10,7 @@ export enum NotificationType {
   SALE_CANCELED = 'SALE_CANCELED',
   LOW_STOCK = 'LOW_STOCK',
   CASH_CLOSED = 'CASH_CLOSED',
+  CASH_OPENED = 'CASH_OPENED',
 }
 
 export enum NotificationSeverity {
@@ -22,6 +23,7 @@ export enum NotificationSeverity {
 @Index(['userId'])
 @Index(['read'])
 @Index(['createdAt'])
+@Index(['deduplicationKey'])
 export class Notification {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -49,6 +51,15 @@ export class Notification {
 
   @Column({ default: false })
   read: boolean;
+
+  /**
+   * Clave opcional para deduplicación.
+   * Si se proporciona, el servicio evita crear una notificación duplicada
+   * con la misma clave en las últimas 24 horas.
+   * Formato sugerido: "{TYPE}:{entityId}:{userId}:{YYYY-MM-DD}"
+   */
+  @Column({ type: 'varchar', nullable: true, default: null })
+  deduplicationKey: string | null;
 
   @CreateDateColumn()
   createdAt: Date;

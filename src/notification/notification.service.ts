@@ -1,10 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { CreateNotificationDto } from './dto/create-notification.dto';
 import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, Repository } from 'typeorm';
+import { EntityManager, MoreThan, Repository } from 'typeorm';
 import { Notification, NotificationType } from './entities/notification.entity';
 import { UserNotificationPreference } from './entities/notification-preference.entity';
 import { NotificationGateway } from './notification.gateway';
+
+/** Ventana de deduplicación: 24 horas en ms */
+const DEDUP_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 @Injectable()
 export class NotificationService {
@@ -20,7 +23,7 @@ export class NotificationService {
     data: CreateNotificationDto,
     manager?: EntityManager,
   ): Promise<Notification | null> {
-    const repo = manager
+    const prefRepo = manager
       ? manager.getRepository(UserNotificationPreference)
       : this.preferencesRepository;
 
@@ -28,24 +31,40 @@ export class NotificationService {
       ? manager.getRepository(Notification)
       : this.notificationsRepository;
 
-    // 🔎 Buscar preferencia del usuario
-    const preference = await repo.findOne({
-      where: {
-        userId: data.userId,
-        type: data.type,
-      },
+    // 🔎 Verificar preferencia del usuario
+    const preference = await prefRepo.findOne({
+      where: { userId: data.userId, type: data.type },
     });
 
-    // ❌ Si existe y está desactivada → no crear
+    // ❌ Preferencia desactivada → omitir
     if (preference && !preference.enabled) {
       return null;
     }
 
-    // ✅ Crear normalmente
-    const notification = notificationRepo.create(data);
+    // 🔁 Deduplicación: si se provee clave, verificar ventana de 24 h
+    if (data.deduplicationKey) {
+      const since = new Date(Date.now() - DEDUP_WINDOW_MS);
+
+      const duplicate = await notificationRepo.findOne({
+        where: {
+          deduplicationKey: data.deduplicationKey,
+          createdAt: MoreThan(since),
+        },
+      });
+
+      if (duplicate) {
+        return null;
+      }
+    }
+
+    // ✅ Crear y persistir
+    const notification = notificationRepo.create({
+      ...data,
+      deduplicationKey: data.deduplicationKey ?? null,
+    });
     const saved = await notificationRepo.save(notification);
 
-    // 🚀 Emitir en tiempo real
+    // 🚀 Emitir en tiempo real vía WebSocket
     this.notificationGateway.sendNotification(data.userId, saved);
 
     return saved;

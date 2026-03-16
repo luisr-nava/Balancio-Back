@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  NotFoundException,
 } from '@nestjs/common';
 import { CreateShopDto } from './dto/create-shop.dto';
 import { JwtPayload } from 'jsonwebtoken';
@@ -11,6 +12,7 @@ import { Repository } from 'typeorm';
 import { normalizeShopConfig } from './utils/normalize-shop-config';
 import { UserShop, UserShopRole } from '@/auth/entities/user-shop.entity';
 import { UpdateShopDto } from './dto/update-shop.dto';
+import { UpdateShopSettingsDto } from './dto/update-shop-settings.dto';
 import { BillingService } from '@/billing/billing.service';
 import { DataSource } from 'typeorm';
 
@@ -216,6 +218,46 @@ export class ShopService {
     return {
       message: 'Tienda actualizada correctamente',
       shop,
+    };
+  }
+
+  async updateShopSettings(
+    shopId: string,
+    dto: UpdateShopSettingsDto,
+    user: JwtPayload,
+  ) {
+    if (user.role !== 'OWNER') {
+      throw new ForbiddenException(
+        'Solo el propietario puede modificar la configuración de la tienda',
+      );
+    }
+
+    const shop = await this.shopRepository.findOne({
+      where: { id: shopId },
+    });
+
+    if (!shop) {
+      throw new NotFoundException('Tienda no encontrada');
+    }
+
+    if (shop.ownerId !== user.id) {
+      throw new ForbiddenException(
+        'No tienes permisos para modificar esta tienda',
+      );
+    }
+
+    Object.assign(shop, dto);
+    await this.shopRepository.save(shop);
+
+    return {
+      message: 'Configuración actualizada correctamente',
+      shop: {
+        id: shop.id,
+        name: shop.name,
+        address: shop.address,
+        phone: shop.phone,
+        logo: shop.logo,
+      },
     };
   }
 

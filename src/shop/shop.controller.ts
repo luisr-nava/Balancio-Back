@@ -13,6 +13,7 @@ import { JwtPayload } from 'jsonwebtoken';
 import { GetUser } from '@/auth/decorators/get-user.decorators';
 import { CreateShopDto } from './dto/create-shop.dto';
 import { UpdateShopDto } from './dto/update-shop.dto';
+import { UpdateShopSettingsDto } from './dto/update-shop-settings.dto';
 
 @Controller('shop')
 export class ShopController {
@@ -36,6 +37,16 @@ export class ShopController {
   @Get(':id')
   getShopById(@Param('id') id: string, @GetUser() user: JwtPayload) {
     return this.shopService.getShopById(id, user);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch(':shopId/settings')
+  updateShopSettings(
+    @Param('shopId') shopId: string,
+    @Body() dto: UpdateShopSettingsDto,
+    @GetUser() user: JwtPayload,
+  ) {
+    return this.shopService.updateShopSettings(shopId, dto, user);
   }
 
   @UseGuards(JwtAuthGuard)

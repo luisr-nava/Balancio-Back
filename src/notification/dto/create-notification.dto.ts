@@ -1,4 +1,4 @@
-import { IsEnum, IsString, IsUUID } from 'class-validator';
+import { IsEnum, IsOptional, IsString, IsUUID } from 'class-validator';
 import {
   NotificationSeverity,
   NotificationType,
@@ -19,4 +19,13 @@ export class CreateNotificationDto {
 
   @IsEnum(NotificationSeverity)
   severity: NotificationSeverity;
+
+  /**
+   * Clave de deduplicación opcional.
+   * Si se proporciona, el servicio no creará otra notificación
+   * con la misma clave en las últimas 24 horas.
+   */
+  @IsOptional()
+  @IsString()
+  deduplicationKey?: string;
 }

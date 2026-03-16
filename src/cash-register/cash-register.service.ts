@@ -65,10 +65,30 @@ export class CashRegisterService {
       cashRegisterId: cashRegister.id,
       shopId: dto.shopId,
       type: CashMovementType.OPENING,
-      amount: dto.openingAmount, // puede ser 0
+      amount: dto.openingAmount,
       userId: user.id,
       description: 'Apertura de caja',
     });
+
+    // 4️⃣ Notificar a OWNER y MANAGER de la tienda
+    const shopUsers = await this.repo.manager.find(User, {
+      relations: { userShops: true },
+      where: { userShops: { shopId: dto.shopId } },
+    });
+
+    const recipients = shopUsers.filter((u) =>
+      [UserRole.OWNER, UserRole.MANAGER].includes(u.role),
+    );
+
+    for (const recipient of recipients) {
+      await this.notificationService.createNotification({
+        userId: recipient.id,
+        shopId: dto.shopId,
+        type: NotificationType.CASH_OPENED,
+        message: `Caja abierta por ${user.fullName} con $${dto.openingAmount}`,
+        severity: NotificationSeverity.INFO,
+      });
+    }
 
     return {
       ...cashRegister,

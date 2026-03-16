@@ -4,6 +4,7 @@ import { Logger, ValidationPipe } from '@nestjs/common';
 import { envs } from './config';
 import * as bodyParser from 'body-parser';
 import { SeedRunner } from './database/seeds';
+import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 // import { SeedRunner } from './database/seeds';
 
 async function bootstrap() {
@@ -47,6 +48,8 @@ async function bootstrap() {
     maxAge: 3600,
   });
 
+  app.useGlobalFilters(new HttpExceptionFilter());
+
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -54,6 +57,16 @@ async function bootstrap() {
       transform: true,
     }),
   );
+
+  // Log every request that ends in 4xx/5xx at the middleware level
+  app.use((req: any, res: any, next: any) => {
+    res.on('finish', () => {
+      if (res.statusCode >= 400) {
+        logger.warn(`[${req.method}] ${req.url} → ${res.statusCode}`);
+      }
+    });
+    next();
+  });
   const seedRunner = app.get(SeedRunner);
 
   try {

@@ -245,19 +245,18 @@ export class SaleService {
             },
           }),
         );
-        if (previousStock > 5 && (updatedProduct.stock ?? 0) <= 5) {
+        const updatedStock = updatedProduct.stock ?? 0;
+
+        if (previousStock > 5 && updatedStock <= 5) {
           if (!shopUsers) {
             shopUsers = await manager.find(User, {
-              relations: {
-                userShops: true,
-              },
-              where: {
-                userShops: {
-                  shopId: dto.shopId,
-                },
-              },
+              relations: { userShops: true },
+              where: { userShops: { shopId: dto.shopId } },
             });
           }
+
+          // Fecha local para la clave de deduplicación (evita duplicados el mismo día)
+          const today = new Date().toISOString().split('T')[0];
 
           for (const u of shopUsers) {
             await this.notificationService.createNotification(
@@ -265,8 +264,9 @@ export class SaleService {
                 userId: u.id,
                 shopId: dto.shopId,
                 type: NotificationType.LOW_STOCK,
-                message: `Producto ${shopProduct.product.name} bajo stock (${shopProduct.stock} unidades restantes)`,
+                message: `Stock bajo: ${shopProduct.product.name} tiene ${updatedStock} unidades restantes`,
                 severity: NotificationSeverity.WARNING,
+                deduplicationKey: `LOW_STOCK:${shopProduct.id}:${u.id}:${today}`,
               },
               manager,
             );

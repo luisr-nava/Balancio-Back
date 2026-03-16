@@ -11,8 +11,12 @@ interface EnvVars {
   CLOUDINARY_API_KEY: string;
   CLOUDINARY_API_SECRET: string;
   FRONTEND_URL?: string;
-  STRIPE_API_KEY?: string;
+  // Stripe — all three are required for billing to work correctly.
+  // Missing any of these causes invoice.paid to silently skip plan updates.
+  STRIPE_SECRET_KEY?: string;
   STRIPE_WEBHOOK_SECRET?: string;
+  STRIPE_PRICE_BASIC?: string;
+  STRIPE_PRICE_PRO?: string;
 }
 
 const log = new Logger('EnvVars - ');
@@ -30,8 +34,10 @@ const envVarsSchema = joi
     CLOUDINARY_API_KEY: joi.string().min(3).max(63).required(),
     CLOUDINARY_API_SECRET: joi.string().min(3).max(63).required(),
     FRONTEND_URL: joi.string().uri().optional(),
-    STRIPE_API_KEY: joi.string().optional(),
+    STRIPE_SECRET_KEY: joi.string().optional(),
     STRIPE_WEBHOOK_SECRET: joi.string().optional(),
+    STRIPE_PRICE_BASIC: joi.string().optional(),
+    STRIPE_PRICE_PRO: joi.string().optional(),
   })
   .unknown(true);
 
@@ -53,6 +59,8 @@ export const envs = {
   CLOUDINARY_API_KEY: envVars.CLOUDINARY_API_KEY,
   CLOUDINARY_API_SECRET: envVars.CLOUDINARY_API_SECRET,
   frontendUrl: envVars.FRONTEND_URL,
-  stripeApiKey: envVars.STRIPE_API_KEY,
+  stripeSecretKey: envVars.STRIPE_SECRET_KEY,
   stripeWebhookSecret: envVars.STRIPE_WEBHOOK_SECRET,
+  stripePriceBasic: envVars.STRIPE_PRICE_BASIC,
+  stripePricePro: envVars.STRIPE_PRICE_PRO,
 };

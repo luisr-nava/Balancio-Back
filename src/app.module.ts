@@ -29,6 +29,8 @@ import { CashMovementModule } from './cash-movement/cash-movement.module';
 import { CashReportModule } from './cash-report/cash-report.module';
 import { PaymentModule } from './payment/payment.module';
 import { ReceiptModule } from './sale/receipt/receipt.module';
+import { SettingsModule } from './settings/settings.module';
+import { HealthModule } from './health/health.module';
 
 @Module({
   imports: [
@@ -64,6 +66,8 @@ import { ReceiptModule } from './sale/receipt/receipt.module';
     CashReportModule,
     PaymentModule,
     ReceiptModule,
+    SettingsModule,
+    HealthModule,
   ],
   controllers: [],
   
