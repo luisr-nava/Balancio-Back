@@ -1,7 +1,14 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { CreateSaleDto } from './dto/create-sale.dto';
 import { UpdateSaleDto } from './dto/update-sale.dto';
-import { Between, DataSource, In, MoreThanOrEqual, Repository } from 'typeorm';
+import {
+  Between,
+  DataSource,
+  In,
+  LessThanOrEqual,
+  MoreThanOrEqual,
+  Repository,
+} from 'typeorm';
 import { PaymentStatus, Sale, SaleStatus } from './entities/sale.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { SaleItem } from './entities/sale-item.entity';
@@ -420,6 +427,10 @@ export class SaleService {
         new Date(filters.fromDate),
         new Date(filters.toDate),
       );
+    } else if (filters.fromDate) {
+      where.saleDate = MoreThanOrEqual(new Date(filters.fromDate));
+    } else if (filters.toDate) {
+      where.saleDate = LessThanOrEqual(new Date(filters.toDate));
     }
 
     const [sales, total] = await this.saleRepo.findAndCount({
@@ -482,6 +493,69 @@ export class SaleService {
       page,
       limit,
       totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  // ─────────────────────────────────────────────
+  // GET BY ID
+  // ─────────────────────────────────────────────
+  async getById(id: string, user: JwtPayload) {
+    const where: any = { id };
+
+    // 🔐 VISIBILIDAD POR ROL
+    if (user.role === 'EMPLOYEE') {
+      where.employeeId = user.id;
+    }
+
+    if (user.role === 'MANAGER') {
+      if (!user.shopIds || user.shopIds.length === 0) {
+        throw new BadRequestException('No tiene acceso a ninguna tienda');
+      }
+      where.shopId = In(user.shopIds);
+    }
+
+    const sale = await this.saleRepo.findOne({
+      where,
+      relations: {
+        shop: true,
+        customer: true,
+        paymentMethod: true,
+        items: {
+          shopProduct: {
+            product: true,
+          },
+        },
+      },
+    });
+
+    if (!sale) {
+      throw new BadRequestException('Venta no encontrada');
+    }
+
+    return {
+      id: sale.id,
+      shopId: sale.shopId,
+      shop: sale.shop.name,
+      customerId: sale.customerId,
+      customer: sale.customer?.fullName ?? null,
+      paymentMethodId: sale.paymentMethodId,
+      paymentMethod: sale.paymentMethod.name,
+      items: sale.items.map((item) => ({
+        id: item.id,
+        shopProductId: item.shopProductId,
+        product: item.shopProduct.product.name,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        total: item.total,
+        priceWasModified: item.priceWasModified,
+      })),
+      subtotal: sale.subtotal,
+      taxAmount: sale.taxAmount,
+      totalAmount: sale.totalAmount,
+      paymentStatus: sale.paymentStatus,
+      status: sale.status,
+      saleDate: sale.saleDate,
+      notes: sale.notes,
     };
   }
 

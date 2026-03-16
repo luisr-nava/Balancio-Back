@@ -47,7 +47,7 @@ export class ProductController {
   @Get()
   async getAll(
     @GetUser() user: JwtPayload,
-    @Param('shopId') shopId?: string,
+    @Query('shopId') shopId?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
     @Query('minStock') minStock?: string,

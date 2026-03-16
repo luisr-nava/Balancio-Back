@@ -72,7 +72,7 @@ export class SupplierService {
       supplier,
     };
   }
-  async getAll(shopId: string, user: JwtPayload, page = 1, limit = 20) {
+  async getAll(shopId: string | undefined, user: JwtPayload, page = 1, limit = 20) {
     const ownerId = user.ownerId ?? user.id;
 
     const [suppliers, total] = await this.supplierRepository.findAndCount({

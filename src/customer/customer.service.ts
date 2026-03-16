@@ -37,7 +37,7 @@ export class CustomerService {
       customer: savedCustomer,
     };
   }
-  async getAll(shopId: string, user: JwtPayload, page = 1, limit = 20) {
+  async getAll(shopId: string | undefined, user: JwtPayload, page = 1, limit = 20) {
     const [customers, total] = await this.customerRepository.findAndCount({
       where: { shopId },
       order: { createdAt: 'DESC' },

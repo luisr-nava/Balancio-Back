@@ -29,7 +29,6 @@ export class SaleController {
   @UseGuards(JwtAuthGuard)
   @Post()
   create(@GetUser() user: JwtPayload, @Body() dto: CreateSaleDto) {
-    console.log('MP TOKEN:', process.env.MP_ACCESS_TOKEN);
     return this.saleService.create(dto, user);
   }
 
@@ -56,6 +55,12 @@ export class SaleController {
       },
       user,
     );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get(':id')
+  getById(@Param('id') id: string, @GetUser() user: JwtPayload) {
+    return this.saleService.getById(id, user);
   }
 
   @UseGuards(JwtAuthGuard)
