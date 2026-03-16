@@ -31,6 +31,7 @@ import { PaymentModule } from './payment/payment.module';
 import { ReceiptModule } from './sale/receipt/receipt.module';
 import { SettingsModule } from './settings/settings.module';
 import { HealthModule } from './health/health.module';
+import { PromotionModule } from './promotion/promotion.module';
 
 @Module({
   imports: [
@@ -68,6 +69,7 @@ import { HealthModule } from './health/health.module';
     ReceiptModule,
     SettingsModule,
     HealthModule,
+    PromotionModule,
   ],
   controllers: [],
   
