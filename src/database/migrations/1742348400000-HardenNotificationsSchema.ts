@@ -88,8 +88,21 @@ export class HardenNotificationsSchema1742348400000
     // had already read.
     // ────────────────────────────────────────────────────────────────────────
     await queryRunner.query(`
-      ALTER TABLE "notifications"
-        RENAME COLUMN "read" TO "isRead"
+      DO $$
+      BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'notifications' AND column_name = 'read'
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'notifications' AND column_name = 'isRead'
+        )
+        THEN
+          ALTER TABLE "notifications" RENAME COLUMN "read" TO "isRead";
+        END IF;
+      END
+      $$;
     `);
 
     // ────────────────────────────────────────────────────────────────────────
@@ -105,8 +118,17 @@ export class HardenNotificationsSchema1742348400000
 
     // A — add nullable
     await queryRunner.query(`
-      ALTER TABLE "notifications"
-        ADD COLUMN "title" character varying
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'notifications' AND column_name = 'title'
+        )
+        THEN
+          ALTER TABLE "notifications" ADD COLUMN "title" character varying;
+        END IF;
+      END
+      $$;
     `);
 
     // B — fill existing rows

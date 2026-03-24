@@ -11,7 +11,7 @@ import {
 } from '@/product/entities/product-history.entity';
 import { PaymentMethod } from '@/payment-method/entities/payment-method.entity';
 import { CashMovement } from '@/cash-movement/entities/cash-movement.entity';
-import { PurchaseStatus } from '@/purchase-return/entities/purchase-return.entity';
+import { PurchaseStatus } from './enums/purchase-status.enum';
 import { PurchaseItem } from './entities/purchase-item.entity';
 import {
   CashMovementType,
@@ -205,10 +205,14 @@ export class PurchaseService {
     return {
       data: purchases.map((purchase) => ({
         id: purchase.id,
+        shopId: purchase.shopId,
         shop: purchase.shop.name,
+        supplierId: purchase.supplierId ?? null,
         supplier: purchase.supplier?.name ?? null,
+        paymentMethodId: purchase.paymentMethodId,
         paymentMethod: purchase.paymentMethod.name,
         items: purchase.items.map((item) => ({
+          shopProductId: item.shopProduct.id,
           product: item.shopProduct.product.name,
           quantity: item.quantity,
           unitCost: item.unitCost,

@@ -9,7 +9,7 @@ import {
   JoinColumn,
 } from 'typeorm';
 import { Shop } from '@/shop/entities/shop.entity';
-import { PurchaseStatus } from '@/purchase-return/entities/purchase-return.entity';
+import { PurchaseStatus } from '../enums/purchase-status.enum';
 import { ProductHistory } from '@/product/entities/product-history.entity';
 import { Supplier } from '@/supplier/entities/supplier.entity';
 import { PaymentMethod } from '@/payment-method/entities/payment-method.entity';
@@ -61,6 +61,9 @@ export class Purchase {
 
   @ManyToOne(() => Shop)
   shop: Shop;
+
+  @Column({ type: 'uuid', nullable: true })
+  supplierId?: string | null;
 
   @ManyToOne(() => Supplier, { nullable: true })
   @JoinColumn({ name: 'supplierId' })

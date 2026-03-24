@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DeepPartial, Repository } from 'typeorm';
 import { SubscriptionStatus } from './enums/subscription-status.enum';
 import Stripe from 'stripe';
 import { RawBodyRequest } from './types/raw-body-request';
@@ -194,7 +194,7 @@ export class BillingService {
       `📋 customer.subscription.created | sub=${sub.id} | status=${sub.status}`,
     );
 
-    const updateData: Partial<SubscriptionEntity> = {
+    const updateData: DeepPartial<SubscriptionEntity> = {
       status: sub.status as SubscriptionStatus,
     };
 
@@ -221,7 +221,7 @@ export class BillingService {
       `🔄 customer.subscription.updated | sub=${sub.id} | status=${sub.status}`,
     );
 
-    const updateData: Partial<SubscriptionEntity> = {
+    const updateData: DeepPartial<SubscriptionEntity> = {
       status: sub.status as SubscriptionStatus,
     };
 
@@ -395,7 +395,7 @@ export class BillingService {
       `💰 invoice.paid | priceId=${priceId} | STRIPE_PRICE_BASIC=${envs.stripePriceBasic} | STRIPE_PRICE_PRO=${envs.stripePricePro}`,
     );
 
-    const updateData: Partial<SubscriptionEntity> = {
+    const updateData: DeepPartial<SubscriptionEntity> = {
       status: SubscriptionStatus.ACTIVE,
       currentPeriodEnd: periodEnd
         ? new Date(periodEnd * 1000)

@@ -615,13 +615,10 @@ export class AuthService {
 
     // MANAGER → a sí mismo y EMPLOYEE
     if (requester.role === UserRole.MANAGER) {
-      console.log(1);
-
       if (
         target.role === UserRole.OWNER ||
         (target.role === UserRole.MANAGER && requester.id !== target.id)
       ) {
-        console.log(2);
         throw new ForbiddenException(
           'No tenés permisos para actualizar este usuario',
         );

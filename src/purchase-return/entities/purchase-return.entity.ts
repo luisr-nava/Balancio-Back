@@ -33,10 +33,7 @@ export enum ReplacementStatus {
   CANCELLED = 'CANCELLED',
 }
 
-export enum PurchaseStatus {
-  COMPLETED = 'COMPLETED',
-  CANCELLED = 'CANCELLED',
-}
+export { PurchaseStatus } from '@/purchase/enums/purchase-status.enum';
 
 export enum RefundType {
   CASH = 'CASH',

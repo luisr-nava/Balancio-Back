@@ -34,11 +34,7 @@ export class MeasurementUnitsSeed {
     }
 
     if (created.length) {
-      console.log(
-        `[SEED] MeasurementUnits creadas correctamente: ${created.join(', ')}`,
-      );
     } else {
-      console.log('[SEED] MeasurementUnits ya existentes, nada para crear');
     }
   }
 }

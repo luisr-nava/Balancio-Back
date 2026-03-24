@@ -27,7 +27,6 @@ export class MercadoPagoService {
         notification_url: `${process.env.API_URL}/sale/webhooks/mercadopago`,
       },
     });
-    console.log(result);
     return {
       init_point: result.sandbox_init_point, // 👈 usamos sandbox
     };
@@ -35,8 +34,6 @@ export class MercadoPagoService {
 
   // 👇 ESTO ES LO QUE FALTA
   async getPayment(paymentId: string) {
-    console.log('MP TOKEN:', process.env.MP_ACCESS_TOKEN);
-
     const payment = new Payment(this.client);
 
     return payment.get({

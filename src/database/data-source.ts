@@ -16,7 +16,7 @@
  *   npm run migration:generate -- src/database/migrations/MyMigration
  *   npm run migration:show
  */
-
+import 'tsconfig-paths/register';
 import 'dotenv/config';
 import { DataSource } from 'typeorm';
 import { join } from 'path';

@@ -46,9 +46,7 @@ export class PaymentMethodsSeed {
     }
 
     if (created.length) {
-      console.log(`[SEED] PaymentMethods creados: ${created.join(', ')}`);
     } else {
-      console.log('[SEED] PaymentMethods ya existentes, nada para crear');
     }
   }
 }

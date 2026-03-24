@@ -21,10 +21,10 @@ export class CashMovement {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column()
+  @Column({ type: 'uuid' })
   cashRegisterId: string;
 
-  @Column()
+  @Column({ type: 'uuid' })
   shopId: string;
 
   @Column({
