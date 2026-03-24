@@ -5,7 +5,6 @@ import {
   Body,
   Patch,
   Param,
-  Delete,
   UseInterceptors,
   Query,
   UseGuards,
@@ -47,7 +46,7 @@ export class SaleController {
     return this.saleService.getAll(
       {
         shopId,
-        // customerId,
+        customerId,
         fromDate,
         toDate,
         page: Number(page ?? 1),

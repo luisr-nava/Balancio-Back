@@ -2,8 +2,9 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { Customer } from './entities/customer.entity';
+import { CustomerShop } from '@/customer-account/entities/customer-shop.entity';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { ShopService } from '@/shop/shop.service';
 import { JwtPayload } from 'jsonwebtoken';
 import { PaginatedServiceResult } from '@/common/pagination/pagination.types';
@@ -13,6 +14,8 @@ export class CustomerService {
   constructor(
     @InjectRepository(Customer)
     private readonly customerRepository: Repository<Customer>,
+    @InjectRepository(CustomerShop)
+    private readonly customerShopRepository: Repository<CustomerShop>,
     private readonly shopAccessService: ShopService,
   ) {}
 
@@ -45,10 +48,28 @@ export class CustomerService {
       take: limit,
     });
 
-    return {
-      data: customers,
-      total,
-    };
+    // Fetch per-shop credit state for returned customers in a single query
+    const shopAccountMap = new Map<string, { currentDebt: number; isBlocked: boolean }>();
+    if (shopId && customers.length > 0) {
+      const accounts = await this.customerShopRepository.find({
+        where: {
+          shopId,
+          customerId: In(customers.map((c) => c.id)),
+        },
+        select: ['customerId', 'currentDebt', 'isBlocked'],
+      });
+      for (const a of accounts) {
+        shopAccountMap.set(a.customerId, { currentDebt: a.currentDebt, isBlocked: a.isBlocked });
+      }
+    }
+
+    const data = customers.map((c) => ({
+      ...c,
+      currentDebt: shopAccountMap.get(c.id)?.currentDebt ?? 0,
+      isBlocked: shopAccountMap.get(c.id)?.isBlocked ?? false,
+    }));
+
+    return { data, total };
   }
 
   async update(id: string, dto: UpdateCustomerDto, shopId: string) {

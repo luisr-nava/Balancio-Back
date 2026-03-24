@@ -7,10 +7,12 @@ interface EnvVars {
   DB_PASSWORD: string;
   DB_NAME: string;
   JWT_SECRET: string;
+  JWT_REFRESH_SECRET: string;
   CLOUDINARY_CLOUD_NAME: string;
   CLOUDINARY_API_KEY: string;
   CLOUDINARY_API_SECRET: string;
   FRONTEND_URL?: string;
+  NODE_ENV?: string;
   // Stripe — all three are required for billing to work correctly.
   // Missing any of these causes invoice.paid to silently skip plan updates.
   STRIPE_SECRET_KEY?: string;
@@ -30,6 +32,11 @@ const envVarsSchema = joi
       'string.min':
         'JWT_SECRET debe tener al menos 32 caracteres para ser seguro',
     }),
+    JWT_REFRESH_SECRET: joi.string().min(32).required().messages({
+      'string.min':
+        'JWT_REFRESH_SECRET debe tener al menos 32 caracteres para ser seguro',
+    }),
+    NODE_ENV: joi.string().valid('development', 'production', 'test').optional(),
     CLOUDINARY_CLOUD_NAME: joi.string().min(3).max(63).required(),
     CLOUDINARY_API_KEY: joi.string().min(3).max(63).required(),
     CLOUDINARY_API_SECRET: joi.string().min(3).max(63).required(),
@@ -55,6 +62,8 @@ export const envs = {
   dbPassword: envVars.DB_PASSWORD,
   dbName: envVars.DB_NAME,
   jwtSecret: envVars.JWT_SECRET,
+  jwtRefreshSecret: envVars.JWT_REFRESH_SECRET,
+  nodeEnv: envVars.NODE_ENV ?? 'development',
   CLOUDINARY_CLOUD_NAME: envVars.CLOUDINARY_CLOUD_NAME,
   CLOUDINARY_API_KEY: envVars.CLOUDINARY_API_KEY,
   CLOUDINARY_API_SECRET: envVars.CLOUDINARY_API_SECRET,

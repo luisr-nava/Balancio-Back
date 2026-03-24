@@ -78,6 +78,14 @@ export class Sale {
   @Column({ type: 'decimal', precision: 12, scale: 2 })
   totalAmount: number;
 
+  /**
+   * Immutable total locked at sale creation.
+   * Used for all debt operations — never recomputed.
+   * Nullable to preserve backward compatibility with rows created before this column was added.
+   */
+  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
+  finalTotal: number | null;
+
   @Column({
     type: 'enum',
     enum: PaymentStatus,
@@ -103,6 +111,9 @@ export class Sale {
     default: SaleStatus.COMPLETED,
   })
   status: SaleStatus;
+
+  @Column({ default: false })
+  isOnCredit: boolean;
 
   @Column({ default: true })
   isActive: boolean;

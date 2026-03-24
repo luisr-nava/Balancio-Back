@@ -10,12 +10,18 @@
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start:dev": "nest start --watch",
     "start:prod": "node dist/src/main.js",
-    "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix"
+    "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
+
+    "migration:run": "typeorm-ts-node-commonjs migration:run -d src/database/data-source.ts",
+    "migration:revert": "typeorm-ts-node-commonjs migration:revert -d src/database/data-source.ts",
+    "migration:show": "typeorm-ts-node-commonjs migration:show -d src/database/data-source.ts",
+    "migration:generate": "typeorm-ts-node-commonjs migration:generate -d src/database/data-source.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^11.0.1",
+    "@nestjs/event-emitter": "^3.0.1",
     "@nestjs/jwt": "^11.0.2",
     "@nestjs/mapped-types": "^2.1.0",
     "@nestjs/passport": "^11.0.5",
@@ -25,6 +31,7 @@
     "@nestjs/throttler": "^6.5.0",
     "@nestjs/typeorm": "^11.0.0",
     "@nestjs/websockets": "^11.1.14",
+    "@types/cookie-parser": "^1.4.10",
     "bcrypt": "^6.0.0",
     "bwip-js": "^4.8.0",
     "class-sanitizer": "^1.0.1",
@@ -32,6 +39,7 @@
     "class-validator": "^0.14.3",
     "cloudinary": "^2.9.0",
     "cookie": "^1.1.1",
+    "cookie-parser": "^1.4.7",
     "country-data": "^0.0.31",
     "date-fns-tz": "^3.2.0",
     "dayjs": "^1.11.19",

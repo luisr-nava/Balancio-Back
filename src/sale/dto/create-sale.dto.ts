@@ -1,5 +1,6 @@
 import {
   IsArray,
+  IsBoolean,
   IsDateString,
   IsEnum,
   IsNotEmpty,
@@ -47,6 +48,10 @@ export class CreateSaleDto {
   @IsOptional()
   @IsUUID()
   customerId?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  isOnCredit?: boolean;
 
   // 🔹 items
   @IsArray()

@@ -14,6 +14,12 @@ export enum UserRole {
   OWNER = 'OWNER',
   MANAGER = 'MANAGER',
   EMPLOYEE = 'EMPLOYEE',
+  /**
+   * Platform-level super administrator.
+   * Not tied to any shop — has access to system-wide observability data.
+   * Must be assigned directly in the DB; never created through normal user flows.
+   */
+  SUPER_ADMIN = 'SUPER_ADMIN',
 }
 @Index(['email'], { unique: true })
 @Entity('user')

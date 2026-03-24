@@ -3,8 +3,6 @@ import {
   PrimaryGeneratedColumn,
   Column,
   ManyToOne,
-  OneToMany,
-  Unique,
   Index,
   JoinColumn,
   CreateDateColumn,
@@ -38,9 +36,6 @@ export class Customer {
 
   @Column('float', { nullable: true })
   creditLimit?: number | null;
-
-  @Column('float', { default: 0 })
-  currentBalance: number;
 
   @Column({ default: true })
   isActive: boolean;

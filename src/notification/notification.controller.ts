@@ -1,59 +1,84 @@
 import {
+  Body,
   Controller,
   Get,
-  Post,
-  Body,
   Patch,
   Param,
-  Delete,
+  ParseEnumPipe,
+  ParseUUIDPipe,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { NotificationService } from './notification.service';
-import { CreateNotificationDto } from './dto/create-notification.dto';
+import { GetNotificationsQueryDto } from './dto/get-notifications-query.dto';
 import { UpdateNotificationPreferenceDto } from './dto/update-notification.dto';
 import { JwtAuthGuard } from '@/auth/guards/jwt-auth.guard';
-import { JwtPayload } from 'jsonwebtoken';
 import { GetUser } from '@/auth/decorators/get-user.decorators';
 import { NotificationType } from './entities/notification.entity';
-
-interface AuthUser {
-  id: string;
-  email: string;
-  role: string;
-}
+import { User } from '@/auth/entities/user.entity';
 
 @Controller('notifications')
 @UseGuards(JwtAuthGuard)
 export class NotificationController {
   constructor(private readonly notificationService: NotificationService) {}
 
+  /**
+   * GET /notifications
+   * Returns paginated notifications for the authenticated user.
+   * Supports filtering by isRead and type.
+   */
   @Get()
-  async getUserNotifications(@GetUser() user: AuthUser) {
-    return this.notificationService.getUserNotifications(user.id);
+  getUserNotifications(
+    @GetUser() user: User,
+    @Query() query: GetNotificationsQueryDto,
+  ) {
+    return this.notificationService.getUserNotifications(user.id, query);
   }
 
-  @Patch(':id/read')
-  async markAsRead(@Param('id') id: string) {
-    await this.notificationService.markAsRead(id);
-    return { message: 'Notification marked as read' };
+  /**
+   * GET /notifications/unread-count
+   * Returns the count of unread notifications — used for the badge.
+   */
+  @Get('unread-count')
+  getUnreadCount(@GetUser() user: User) {
+    return this.notificationService.getUnreadCount(user.id);
   }
 
+  /**
+   * PATCH /notifications/read-all
+   * Marks every unread notification for this user as read.
+   * Must be declared BEFORE /:id routes to avoid being captured by the param matcher.
+   */
   @Patch('read-all')
-  async markAllAsRead(@GetUser() user: AuthUser) {
-    await this.notificationService.markAllAsRead(user.id);
-    return { message: 'All notifications marked as read' };
+  markAllAsRead(@GetUser() user: User) {
+    return this.notificationService.markAllAsRead(user.id);
   }
 
-  @UseGuards(JwtAuthGuard)
+  /**
+   * PATCH /notifications/:id/read
+   * Marks a single notification as read.
+   * Ownership is enforced in the service — only the notification's owner
+   * can mark it as read (throws 404 if the id doesn't belong to this user).
+   */
+  @Patch(':id/read')
+  markAsRead(
+    @Param('id', ParseUUIDPipe) id: string,
+    @GetUser() user: User,
+  ) {
+    return this.notificationService.markAsRead(id, user.id);
+  }
+
+  /** GET /notifications/preferences */
   @Get('preferences')
-  async getPreferences(@GetUser() user: JwtPayload) {
+  getPreferences(@GetUser() user: User) {
     return this.notificationService.getUserPreferences(user.id);
   }
-  @UseGuards(JwtAuthGuard)
+
+  /** PATCH /notifications/preferences/:type */
   @Patch('preferences/:type')
-  async updatePreference(
-    @GetUser() user: JwtPayload,
-    @Param('type') type: NotificationType,
+  updatePreference(
+    @GetUser() user: User,
+    @Param('type', new ParseEnumPipe(NotificationType)) type: NotificationType,
     @Body() dto: UpdateNotificationPreferenceDto,
   ) {
     return this.notificationService.updateUserPreference(

@@ -6,13 +6,17 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Promotion, PromotionType } from './entities/promotion.entity';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { Promotion, PromotionScopeType, PromotionType } from './entities/promotion.entity';
 import { PromotionItem } from './entities/promotion-item.entity';
 import { PromotionBenefit, BenefitType } from './entities/promotion-benefit.entity';
+import { PromotionShop } from './entities/promotion-shop.entity';
 import { CreatePromotionDto } from './dto/create-promotion.dto';
 import { UpdatePromotionDto } from './dto/update-promotion.dto';
 import { CartItemDto } from './dto/evaluate-promotions.dto';
-import { User } from '@/auth/entities/user.entity';
+import { User, UserRole } from '@/auth/entities/user.entity';
+import { UserShop } from '@/auth/entities/user-shop.entity';
+import { PromotionCreatedEvent } from './events/promotion-created.event';
 
 // ── result shapes ──────────────────────────────────────────────────────────────
 
@@ -39,11 +43,6 @@ export interface ApplyResult {
 
 // ── pure calculation helpers ───────────────────────────────────────────────────
 
-/**
- * How many full times the promotion can be applied given the cart quantities.
- * e.g. promo needs 2x Fernet — if cart has 5, times = floor(5/2) = 2.
- * Returns 0 if ANY required product is missing or insufficient.
- */
 function calculateTimes(
   cartItems: CartItemDto[],
   promotionItems: PromotionItem[],
@@ -59,10 +58,6 @@ function calculateTimes(
   return times === Infinity ? 0 : times;
 }
 
-/**
- * Total price of a single set of combo items (1× application).
- * Ignores other products in the cart.
- */
 function calculateComboTotal(
   cartItems: CartItemDto[],
   promotionItems: PromotionItem[],
@@ -74,21 +69,6 @@ function calculateComboTotal(
   }, 0);
 }
 
-/**
- * Total savings produced by `times` applications of the promotion.
- *
- * PERCENT:
- *   savings = comboTotal × times × (value / 100)
- *
- * FIXED_PRICE:
- *   savings = (comboTotal − fixedPrice) × times
- *   — calculated only on combo products, not the whole cart
- *
- * FREE_ITEM:
- *   freeQty = freeQuantityPerApplication × times
- *   capped at the actual quantity of that product in the cart
- *   savings = freeItem.unitPrice × actualFree
- */
 function calculateSavings(
   cartItems: CartItemDto[],
   promotionItems: PromotionItem[],
@@ -102,13 +82,11 @@ function calculateSavings(
       const comboTotal = calculateComboTotal(cartItems, promotionItems);
       return +((comboTotal * times * benefit.value) / 100).toFixed(2);
     }
-
     case BenefitType.FIXED_PRICE: {
       const comboTotal = calculateComboTotal(cartItems, promotionItems);
       const savingsPerApplication = Math.max(0, comboTotal - benefit.value);
       return +(savingsPerApplication * times).toFixed(2);
     }
-
     case BenefitType.FREE_ITEM: {
       if (!benefit.freeProductId) return 0;
       const freeItem = cartItems.find(
@@ -120,7 +98,6 @@ function calculateSavings(
       const actualFree = Math.min(totalFree, freeItem.quantity);
       return +(freeItem.unitPrice * actualFree).toFixed(2);
     }
-
     default:
       return 0;
   }
@@ -140,8 +117,6 @@ function buildDescription(benefit: PromotionBenefit, times: number): string {
   }
 }
 
-// ── shared query helper ────────────────────────────────────────────────────────
-
 function isPromotionDateValid(promotion: Promotion): boolean {
   const now = new Date();
   if (promotion.startDate && promotion.startDate > now) return false;
@@ -160,23 +135,79 @@ export class PromotionService {
     private readonly itemRepo: Repository<PromotionItem>,
     @InjectRepository(PromotionBenefit)
     private readonly benefitRepo: Repository<PromotionBenefit>,
+    @InjectRepository(PromotionShop)
+    private readonly promotionShopRepo: Repository<PromotionShop>,
+    @InjectRepository(UserShop)
+    private readonly userShopRepo: Repository<UserShop>,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
-  // ── CRUD ────────────────────────────────────────────────────────────────────
+  // ── helpers ─────────────────────────────────────────────────────────────────
 
-  async create(dto: CreatePromotionDto, _user: User): Promise<Promotion> {
+  private async getUserShopIds(userId: string): Promise<string[]> {
+    const userShops = await this.userShopRepo.find({ where: { userId } });
+    return userShops.map((us) => us.shopId);
+  }
+
+  /** Base query builder that filters promotions valid for a given shopId */
+  private scopedQuery(shopId: string) {
+    return this.promotionRepo
+      .createQueryBuilder('p')
+      .leftJoin('p.shops', 'shopScope', 'shopScope.shopId = :shopId', {
+        shopId,
+      })
+      .where(
+        '(p.scopeType = :all OR shopScope.id IS NOT NULL)',
+        { all: PromotionScopeType.ALL },
+      );
+  }
+
+  // ── CRUD ─────────────────────────────────────────────────────────────────────
+
+  async create(dto: CreatePromotionDto, user: User): Promise<Promotion> {
+    // 1a. Validate PERCENT value max
+    if (dto.benefit.type === BenefitType.PERCENT && (dto.benefit.value ?? 0) > 100) {
+      throw new BadRequestException('El porcentaje no puede superar el 100%');
+    }
+
+    // 1. Validate scope vs role
+    if (dto.scopeType === PromotionScopeType.ALL && user.role !== UserRole.OWNER) {
+      throw new ForbiddenException(
+        'Solo el dueño puede crear promociones para todas las tiendas',
+      );
+    }
+
+    if (dto.scopeType === PromotionScopeType.SPECIFIC) {
+      if (!dto.shopIds?.length) {
+        throw new BadRequestException(
+          'Debes especificar al menos una tienda para una promoción de alcance específico',
+        );
+      }
+
+      // Validate all shopIds belong to user
+      const userShopIds = await this.getUserShopIds(user.id);
+      const invalidShops = dto.shopIds.filter((id) => !userShopIds.includes(id));
+      if (invalidShops.length) {
+        throw new ForbiddenException(
+          'No tienes acceso a algunas de las tiendas especificadas',
+        );
+      }
+    }
+
+    // 2. Persist promotion
     const promotion = this.promotionRepo.create({
-      shopId: dto.shopId,
       name: dto.name,
+      description: dto.description ?? null,
       type: dto.type,
+      scopeType: dto.scopeType,
       startDate: dto.startDate ? new Date(dto.startDate) : null,
       endDate: dto.endDate ? new Date(dto.endDate) : null,
       priority: dto.priority ?? 0,
       isActive: true,
     });
-
     const saved = await this.promotionRepo.save(promotion);
 
+    // 3. Items
     const items = dto.items.map((i) =>
       this.itemRepo.create({
         promotionId: saved.id,
@@ -186,6 +217,7 @@ export class PromotionService {
     );
     await this.itemRepo.save(items);
 
+    // 4. Benefit
     const benefit = this.benefitRepo.create({
       promotionId: saved.id,
       type: dto.benefit.type,
@@ -195,18 +227,71 @@ export class PromotionService {
     });
     await this.benefitRepo.save(benefit);
 
+    // 5. PromotionShop records & determine shopIds for event
+    let eventShopIds: string[];
+
+    if (dto.scopeType === PromotionScopeType.SPECIFIC) {
+      const shopRecords = dto.shopIds!.map((shopId) =>
+        this.promotionShopRepo.create({ promotionId: saved.id, shopId }),
+      );
+      await this.promotionShopRepo.save(shopRecords);
+      eventShopIds = dto.shopIds!;
+    } else {
+      // ALL scope: get creator's shops for notification purposes
+      eventShopIds = await this.getUserShopIds(user.id);
+    }
+
+    // 6. Emit domain event (decoupled notification handled by listener)
+    const event: PromotionCreatedEvent = {
+      promotionId: saved.id,
+      createdByUserId: user.id,
+      createdByRole: user.role,
+      shopIds: eventShopIds,
+      name: saved.name,
+      ownerId: user.ownerId ?? user.id,
+    };
+    this.eventEmitter.emit('promotion.created', event);
+
     return this.findById(saved.id);
   }
 
+  /** Returns all promotions the user has access to (via shops or ALL scope) */
+  async findMyPromotions(user: User): Promise<Promotion[]> {
+    const userShopIds = await this.getUserShopIds(user.id);
+
+    if (!userShopIds.length) return [];
+
+    return this.promotionRepo
+      .createQueryBuilder('p')
+      .leftJoinAndSelect('p.items', 'items')
+      .leftJoinAndSelect('p.benefits', 'benefits')
+      .leftJoinAndSelect('p.shops', 'shops')
+      .leftJoin('p.shops', 'shopScope', 'shopScope.shopId IN (:...shopIds)', {
+        shopIds: userShopIds,
+      })
+      .where('p.isActive = true')
+      .andWhere(
+        '(p.scopeType = :all OR shopScope.id IS NOT NULL)',
+        { all: PromotionScopeType.ALL },
+      )
+      .orderBy('p.priority', 'DESC')
+      .addOrderBy('p.createdAt', 'DESC')
+      .getMany();
+  }
+
   async findAll(shopId: string): Promise<Promotion[]> {
-    return this.promotionRepo.find({
-      where: { shopId, isActive: true },
-      order: { priority: 'DESC', createdAt: 'DESC' },
-    });
+    return this.scopedQuery(shopId)
+      .andWhere('p.isActive = true')
+      .orderBy('p.priority', 'DESC')
+      .addOrderBy('p.createdAt', 'DESC')
+      .getMany();
   }
 
   async findById(id: string): Promise<Promotion> {
-    const promotion = await this.promotionRepo.findOne({ where: { id } });
+    const promotion = await this.promotionRepo.findOne({
+      where: { id },
+      relations: { shops: true },
+    });
     if (!promotion) throw new NotFoundException('Promoción no encontrada');
     return promotion;
   }
@@ -214,17 +299,32 @@ export class PromotionService {
   async update(
     id: string,
     dto: UpdatePromotionDto,
-    _user: User,
+    user: User,
   ): Promise<Promotion> {
     const promotion = await this.findById(id);
 
+    if (dto.benefit?.type === BenefitType.PERCENT && (dto.benefit.value ?? 0) > 100) {
+      throw new BadRequestException('El porcentaje no puede superar el 100%');
+    }
+
     if (dto.name !== undefined) promotion.name = dto.name;
+    if (dto.description !== undefined) promotion.description = dto.description ?? null;
     if (dto.type !== undefined) promotion.type = dto.type;
     if (dto.priority !== undefined) promotion.priority = dto.priority;
     if (dto.startDate !== undefined)
       promotion.startDate = dto.startDate ? new Date(dto.startDate) : null;
     if (dto.endDate !== undefined)
       promotion.endDate = dto.endDate ? new Date(dto.endDate) : null;
+
+    // Scope / shops update
+    if (dto.scopeType !== undefined) {
+      if (dto.scopeType === PromotionScopeType.ALL && user.role !== UserRole.OWNER) {
+        throw new ForbiddenException(
+          'Solo el dueño puede cambiar una promoción a alcance global',
+        );
+      }
+      promotion.scopeType = dto.scopeType;
+    }
 
     if (dto.items !== undefined) {
       await this.itemRepo.delete({ promotionId: id });
@@ -250,6 +350,24 @@ export class PromotionService {
       await this.benefitRepo.save(benefit);
     }
 
+    // Re-create shop associations if shopIds provided
+    if (dto.shopIds !== undefined) {
+      const userShopIds = await this.getUserShopIds(user.id);
+      const invalidShops = dto.shopIds.filter((sid) => !userShopIds.includes(sid));
+      if (invalidShops.length) {
+        throw new ForbiddenException(
+          'No tienes acceso a algunas de las tiendas especificadas',
+        );
+      }
+      await this.promotionShopRepo.delete({ promotionId: id });
+      if (dto.shopIds.length) {
+        const shopRecords = dto.shopIds.map((shopId) =>
+          this.promotionShopRepo.create({ promotionId: id, shopId }),
+        );
+        await this.promotionShopRepo.save(shopRecords);
+      }
+    }
+
     await this.promotionRepo.save(promotion);
     return this.findById(id);
   }
@@ -261,13 +379,8 @@ export class PromotionService {
     return { message: 'Promoción desactivada correctamente' };
   }
 
-  // ── EVALUATION (non-destructive) ────────────────────────────────────────────
+  // ── EVALUATION (non-destructive) ─────────────────────────────────────────────
 
-  /**
-   * Returns all applicable promotions for the cart WITHOUT modifying anything.
-   * Each preview includes how many times the promo applies and the total savings.
-   * Ordered by savings DESC so the frontend can highlight the best deal.
-   */
   async evaluatePromotions(
     cartItems: CartItemDto[],
     shopId: string,
@@ -275,11 +388,9 @@ export class PromotionService {
     if (!cartItems.length) return [];
 
     const now = new Date();
-    const promotions = await this.promotionRepo
-      .createQueryBuilder('p')
+    const promotions = await this.scopedQuery(shopId)
       .leftJoinAndSelect('p.items', 'items')
       .leftJoinAndSelect('p.benefits', 'benefits')
-      .where('p.shopId = :shopId', { shopId })
       .andWhere('p.isActive = true')
       .andWhere('(p.startDate IS NULL OR p.startDate <= :now)', { now })
       .andWhere('(p.endDate IS NULL OR p.endDate >= :now)', { now })
@@ -317,13 +428,6 @@ export class PromotionService {
 
   // ── APPLICATION ──────────────────────────────────────────────────────────────
 
-  /**
-   * Applies ONE selected promotion to the cart.
-   * Does NOT persist anything — the caller (SaleService) stores the result.
-   *
-   * Security: validates promotion.shopId === shopId to prevent cross-shop abuse.
-   * Calculation: uses combo-scoped totals, not the full cart total.
-   */
   async applyPromotion(
     cartItems: CartItemDto[],
     promotionId: string,
@@ -337,6 +441,7 @@ export class PromotionService {
       .createQueryBuilder('p')
       .leftJoinAndSelect('p.items', 'items')
       .leftJoinAndSelect('p.benefits', 'benefits')
+      .leftJoin('p.shops', 'shopScope', 'shopScope.shopId = :shopId', { shopId })
       .where('p.id = :promotionId', { promotionId })
       .andWhere('p.isActive = true')
       .getOne();
@@ -345,21 +450,20 @@ export class PromotionService {
       throw new NotFoundException('Promoción no encontrada o inactiva');
     }
 
-    // ── security: cross-shop guard ──────────────────────────────────────────
-    if (promotion.shopId !== shopId) {
-      throw new ForbiddenException(
-        'La promoción no pertenece a esta tienda',
-      );
+    // ── scope guard: validate promotion applies to this shop ──────────────────
+    if (promotion.scopeType === PromotionScopeType.SPECIFIC) {
+      const shopRecord = await this.promotionShopRepo.findOne({
+        where: { promotionId, shopId },
+      });
+      if (!shopRecord) {
+        throw new ForbiddenException('La promoción no aplica a esta tienda');
+      }
     }
 
-    // ── date validation ─────────────────────────────────────────────────────
     if (!isPromotionDateValid(promotion)) {
-      throw new BadRequestException(
-        'La promoción no está vigente en esta fecha',
-      );
+      throw new BadRequestException('La promoción no está vigente en esta fecha');
     }
 
-    // ── cart conditions ─────────────────────────────────────────────────────
     const times = calculateTimes(cartItems, promotion.items);
     if (times === 0) {
       throw new BadRequestException(

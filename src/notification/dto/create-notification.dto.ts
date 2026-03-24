@@ -1,4 +1,10 @@
-import { IsEnum, IsOptional, IsString, IsUUID } from 'class-validator';
+import {
+  IsEnum,
+  IsObject,
+  IsOptional,
+  IsString,
+  IsUUID,
+} from 'class-validator';
 import {
   NotificationSeverity,
   NotificationType,
@@ -8,11 +14,16 @@ export class CreateNotificationDto {
   @IsUUID()
   userId: string;
 
+  /** Nullable for system-level notifications without a shop context. */
+  @IsOptional()
   @IsUUID()
-  shopId: string;
+  shopId?: string;
 
   @IsEnum(NotificationType)
   type: NotificationType;
+
+  @IsString()
+  title: string;
 
   @IsString()
   message: string;
@@ -21,9 +32,17 @@ export class CreateNotificationDto {
   severity: NotificationSeverity;
 
   /**
-   * Clave de deduplicación opcional.
-   * Si se proporciona, el servicio no creará otra notificación
-   * con la misma clave en las últimas 24 horas.
+   * Optional JSON payload for dynamic data (e.g. { saleId, amount }).
+   * The service stores this verbatim — keep it small.
+   */
+  @IsOptional()
+  @IsObject()
+  metadata?: Record<string, unknown>;
+
+  /**
+   * Deduplication key (optional).
+   * If provided, the service will not create another notification with the
+   * same key within the last 24 hours.
    */
   @IsOptional()
   @IsString()

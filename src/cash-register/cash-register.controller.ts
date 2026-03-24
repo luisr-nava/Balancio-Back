@@ -85,4 +85,20 @@ export class CashRegisterController {
   ) {
     return this.cashRegisterService.getCurrentForUser(shopId, user.id);
   }
+
+  // MONITOREO EN TIEMPO REAL
+  // OWNER/MANAGER → todas las cajas abiertas de la tienda
+  // EMPLOYEE      → solo su propia caja
+  @UseGuards(JwtAuthGuard)
+  @Get('live/:shopId')
+  getLive(@Param('shopId') shopId: string, @GetUser() user: JwtPayload) {
+    return this.cashRegisterService.getLive(shopId, user);
+  }
+
+  // LISTADO COMPLETO (OPEN + CLOSED) POR TIENDA
+  @UseGuards(JwtAuthGuard)
+  @Get(':shopId')
+  getByShop(@Param('shopId') shopId: string, @GetUser() user: JwtPayload) {
+    return this.cashRegisterService.getByShop(shopId, user);
+  }
 }

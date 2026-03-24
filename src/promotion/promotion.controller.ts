@@ -29,6 +29,17 @@ export class PromotionController {
     return this.promotionService.create(dto, user);
   }
 
+  /**
+   * GET /promotion/my-promotions
+   * Returns all promotions accessible to the authenticated user
+   * (ALL-scope + SPECIFIC where user has access to at least one shop).
+   * Includes items, benefits, and shop associations.
+   */
+  @Get('my-promotions')
+  findMyPromotions(@GetUser() user: User) {
+    return this.promotionService.findMyPromotions(user);
+  }
+
   @Get()
   findAll(@Query('shopId') shopId: string) {
     return this.promotionService.findAll(shopId);
@@ -58,7 +69,6 @@ export class PromotionController {
   /**
    * POST /promotion/evaluate
    * Returns all applicable promotions for a cart WITHOUT applying them.
-   * The user then decides which one (if any) to apply.
    */
   @Post('evaluate')
   evaluate(@Body() dto: EvaluatePromotionsDto) {
@@ -68,7 +78,7 @@ export class PromotionController {
   /**
    * POST /promotion/apply
    * Applies ONE promotion to the cart and returns the discounted total.
-   * Does NOT persist anything — the sale service should store the result.
+   * Does NOT persist anything.
    */
   @Post('apply')
   apply(@Body() dto: ApplyPromotionDto) {

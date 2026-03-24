@@ -23,6 +23,16 @@
     }
   },
   "include": [
-    "src/**/*.ts",
-  ]
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/*.spec.ts",
+    "src/assets",
+    ".git"
+  ],
+  "watchOptions": {
+    "excludeDirectories": ["node_modules", "dist", "src/assets", ".git"]
+  }
 }

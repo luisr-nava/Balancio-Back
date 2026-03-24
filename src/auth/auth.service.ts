@@ -6,7 +6,7 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { JwtPayload } from 'jsonwebtoken';
+import { JwtPayload, TokenExpiredError, JsonWebTokenError } from 'jsonwebtoken';
 import { CreateUserDto } from './dto/create-user.dto';
 import { User, UserRole } from './entities/user.entity';
 import * as bcrypt from 'bcrypt';
@@ -22,6 +22,11 @@ import { VerificationType } from './interfaces';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateUserRoleDto } from './dto/update-user-rol.dto';
 import { BillingService } from '@/billing/billing.service';
+import { NotificationService } from '@/notification/notification.service';
+import {
+  NotificationSeverity,
+  NotificationType,
+} from '@/notification/entities/notification.entity';
 @Injectable()
 export class AuthService {
   constructor(
@@ -32,6 +37,7 @@ export class AuthService {
     private readonly billingService: BillingService,
     private readonly emailService: EmailService,
     private readonly jwtService: JwtService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   async createUser(createUserDto: CreateUserDto) {
@@ -96,6 +102,27 @@ export class AuthService {
       savedUser.email,
       savedUser.fullName,
     );
+
+    // Notify the owner (or the requester if they ARE the owner) about the new employee.
+    // If a MANAGER creates an employee, the owner (requester.ownerId) is notified.
+    // If an OWNER creates directly, they are notified themselves.
+    const notifyUserId = (requester.ownerId as string | null) ?? requester.id;
+    const roleLabel =
+      role === UserRole.MANAGER ? 'encargado' : 'empleado';
+
+    await this.notificationService.createNotification({
+      userId: notifyUserId,
+      type: NotificationType.EMPLOYEE_CREATED,
+      title: 'Nuevo integrante del equipo',
+      message: `Se agregó un nuevo ${roleLabel}: ${savedUser.fullName}`,
+      severity: NotificationSeverity.INFO,
+      metadata: {
+        employeeId: savedUser.id,
+        employeeName: savedUser.fullName,
+        role: savedUser.role,
+        createdBy: requester.id,
+      },
+    });
 
     return {
       message:
@@ -173,23 +200,44 @@ export class AuthService {
       lastLogin: new Date(),
     });
 
-    const token = this.jwtService.sign(
-      {
-        sub: user.id,
-        role: user.role,
-        ownerId: user.ownerId ?? null,
-        email: user.email,
-      },
-      {
-        secret: envs.jwtSecret,
-        expiresIn: '1d',
-      },
-    );
+    const { accessToken, refreshToken } = this.generateTokens(user);
+
     return {
-      token,
+      token: accessToken,
+      refreshToken,
       user,
       ownerId: user.ownerId ?? null,
     };
+  }
+
+  async refreshAccessToken(
+    rawRefreshToken: string,
+  ): Promise<{ accessToken: string; refreshToken: string }> {
+    let payload: { sub: string; role: string; ownerId: string | null };
+
+    try {
+      payload = this.jwtService.verify<{
+        sub: string;
+        role: string;
+        ownerId: string | null;
+      }>(rawRefreshToken, { secret: envs.jwtRefreshSecret });
+    } catch (err) {
+      if (err instanceof TokenExpiredError) {
+        throw new UnauthorizedException('Refresh token expirado');
+      }
+      if (err instanceof JsonWebTokenError) {
+        throw new UnauthorizedException('Refresh token inválido');
+      }
+      throw new UnauthorizedException('Error al validar el refresh token');
+    }
+
+    const user = await this.authRepository.findOneBy({ id: payload.sub });
+
+    if (!user || !user.isActive) {
+      throw new UnauthorizedException('Usuario no encontrado o desactivado');
+    }
+
+    return this.generateTokens(user);
   }
 
   async verifyCode(code: string) {
@@ -621,5 +669,29 @@ export class AuthService {
         'Un encargado solo puede eliminar empleados',
       );
     }
+  }
+
+  private generateTokens(user: User): {
+    accessToken: string;
+    refreshToken: string;
+  } {
+    const tokenPayload = {
+      sub: user.id,
+      role: user.role,
+      ownerId: user.ownerId ?? null,
+      email: user.email,
+    };
+
+    const accessToken = this.jwtService.sign(tokenPayload, {
+      secret: envs.jwtSecret,
+      expiresIn: '15m',
+    });
+
+    const refreshToken = this.jwtService.sign(tokenPayload, {
+      secret: envs.jwtRefreshSecret,
+      expiresIn: '7d',
+    });
+
+    return { accessToken, refreshToken };
   }
 }

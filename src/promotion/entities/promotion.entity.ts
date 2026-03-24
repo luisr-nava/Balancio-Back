@@ -2,35 +2,47 @@ import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
-  ManyToOne,
   OneToMany,
   Index,
   CreateDateColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { Shop } from '@/shop/entities/shop.entity';
 import { PromotionItem } from './promotion-item.entity';
 import { PromotionBenefit } from './promotion-benefit.entity';
+import { PromotionShop } from './promotion-shop.entity';
 
 export enum PromotionType {
   DISCOUNT = 'DISCOUNT',
   COMBO = 'COMBO',
 }
 
+export enum PromotionScopeType {
+  ALL = 'ALL',
+  SPECIFIC = 'SPECIFIC',
+}
+
 @Entity()
-@Index(['shopId', 'isActive'])
+@Index(['isActive'])
+@Index(['scopeType', 'isActive'])
 export class Promotion {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column()
-  shopId: string;
-
   @Column({ type: 'varchar', length: 100 })
   name: string;
 
+  @Column({ type: 'varchar', length: 255, nullable: true, default: null })
+  description: string | null;
+
   @Column({ type: 'enum', enum: PromotionType })
   type: PromotionType;
+
+  @Column({
+    type: 'enum',
+    enum: PromotionScopeType,
+    default: PromotionScopeType.SPECIFIC,
+  })
+  scopeType: PromotionScopeType;
 
   @Column({ default: true })
   isActive: boolean;
@@ -50,8 +62,11 @@ export class Promotion {
   @UpdateDateColumn()
   updatedAt: Date;
 
-  @ManyToOne(() => Shop)
-  shop: Shop;
+  @OneToMany(() => PromotionShop, (ps) => ps.promotion, {
+    cascade: true,
+    eager: false,
+  })
+  shops: PromotionShop[];
 
   @OneToMany(() => PromotionItem, (item) => item.promotion, {
     cascade: true,

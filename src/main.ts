@@ -3,8 +3,9 @@ import { AppModule } from './app.module';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { envs } from './config';
 import * as bodyParser from 'body-parser';
+import cookieParser from 'cookie-parser';
 import { SeedRunner } from './database/seeds';
-import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+// HttpExceptionFilter is registered via APP_FILTER in AppModule (DI-aware).
 // import { SeedRunner } from './database/seeds';
 
 async function bootstrap() {
@@ -15,6 +16,7 @@ async function bootstrap() {
     bodyParser: false,
   });
   app.setGlobalPrefix('api/v1');
+  app.use(cookieParser());
   app.use(
     '/api/v1/billing/webhook',
     bodyParser.raw({ type: 'application/json' }),
@@ -48,7 +50,7 @@ async function bootstrap() {
     maxAge: 3600,
   });
 
-  app.useGlobalFilters(new HttpExceptionFilter());
+  // HttpExceptionFilter is registered via APP_FILTER in AppModule.
 
   app.useGlobalPipes(
     new ValidationPipe({

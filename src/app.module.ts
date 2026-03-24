@@ -1,5 +1,9 @@
+import { APP_FILTER } from '@nestjs/core';
 import { Module } from '@nestjs/common';
+import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+import { ErrorLogModule } from './error-log/error-log.module';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { AuthModule } from './auth/auth.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { typeORMConfig } from './config';
@@ -32,10 +36,12 @@ import { ReceiptModule } from './sale/receipt/receipt.module';
 import { SettingsModule } from './settings/settings.module';
 import { HealthModule } from './health/health.module';
 import { PromotionModule } from './promotion/promotion.module';
+import { CustomerAccountModule } from './customer-account/customer-account.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    EventEmitterModule.forRoot({ wildcard: false, global: true }),
     ScheduleModule.forRoot(),
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
@@ -70,9 +76,13 @@ import { PromotionModule } from './promotion/promotion.module';
     SettingsModule,
     HealthModule,
     PromotionModule,
+    CustomerAccountModule,
+    ErrorLogModule,
   ],
   controllers: [],
-  
-  providers: [],
+  providers: [
+    // Registers HttpExceptionFilter through DI so ErrorLogService can be injected.
+    { provide: APP_FILTER, useClass: HttpExceptionFilter },
+  ],
 })
 export class AppModule {}

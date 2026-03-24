@@ -21,7 +21,6 @@ import { CashRegisterStatus } from '@/cash-register/enums/cash-register-status.e
 import { CancelSaleDto } from './dto/cancel-sale.dto';
 import { JwtPayload } from 'jsonwebtoken';
 import { CashMovementType } from '@/cash-register/entities/cash-register.entity';
-import { Customer } from '@/customer/entities/customer.entity';
 import { MercadoPagoService } from './mercado-pago.service';
 import { NotificationService } from '@/notification/notification.service';
 import {
@@ -32,6 +31,12 @@ import { User, UserRole } from '@/auth/entities/user.entity';
 import { ReceiptService } from './receipt/receipt.service';
 import { Shop } from '@/shop/entities/shop.entity';
 import { ReceiptPdfFactory } from './receipt/pdf/receipt-pdf.factory';
+import {
+  CustomerAccountMovement,
+  CustomerAccountMovementType,
+} from '@/customer-account/entities/customer-account-movement.entity';
+import { CustomerShop } from '@/customer-account/entities/customer-shop.entity';
+import { CustomerAccountService } from '@/customer-account/customer-account.service';
 
 @Injectable()
 export class SaleService {
@@ -51,9 +56,9 @@ export class SaleService {
     private readonly saleItemHistoryRepo: Repository<SaleItemHistory>,
     private readonly cashRegisterService: CashRegisterService,
     private readonly mercadoPagoService: MercadoPagoService,
-
     private readonly notificationService: NotificationService,
     private readonly receiptService: ReceiptService,
+    private readonly customerAccountService: CustomerAccountService,
   ) {}
   async create(dto: CreateSaleDto, user: JwtPayload) {
     return this.dataSource.transaction(async (manager) => {
@@ -97,42 +102,19 @@ export class SaleService {
         saleTotal += itemTotal;
       }
 
-      // 2.5️⃣ Validación FIADO (PENDING)
-      if (dto.paymentStatus === PaymentStatus.PENDING) {
-        if (!dto.customerId) {
-          throw new BadRequestException('Una venta fiada requiere un cliente');
-        }
-
-        const customer = await manager.findOne(Customer, {
-          where: { id: dto.customerId, shopId: dto.shopId },
-        });
-
-        if (!customer) {
-          throw new BadRequestException('Cliente no encontrado');
-        }
-
-        const newBalance = Number(customer.currentBalance ?? 0) + saleTotal;
-
-        // 👉 SOLO validar si tiene límite
-        if (
-          customer.creditLimit !== null &&
-          customer.creditLimit !== undefined
-        ) {
-          if (newBalance > customer.creditLimit) {
-            throw new BadRequestException(
-              `Límite de crédito excedido. Disponible: ${
-                customer.creditLimit - customer.currentBalance
-              }`,
-            );
-          }
-        }
-
-        // Actualizar balance del cliente
-        customer.currentBalance = newBalance;
-        await manager.save(customer);
+      // 2.5️⃣ Determinar paymentStatus e isOnCredit antes de persistir la venta
+      const isOnCredit = dto.isOnCredit === true;
+      if (isOnCredit) {
+        dto.paymentStatus = PaymentStatus.PENDING;
       }
+
+      if ((dto.paymentStatus === PaymentStatus.PENDING || isOnCredit) && !dto.customerId) {
+        throw new BadRequestException('Una venta fiada requiere un cliente');
+      }
+
       const paymentStatus = dto.paymentStatus ?? PaymentStatus.PAID;
-      // 3️⃣ Crear venta
+
+      // 3️⃣ Crear y persistir venta (finalTotal queda inmutable desde este momento)
       const sale = manager.create(Sale, {
         shopId: dto.shopId,
         customerId: dto.customerId ?? null,
@@ -142,7 +124,9 @@ export class SaleService {
         discountAmount: dto.discountAmount ?? 0,
         taxAmount: saleTaxAmount,
         totalAmount: saleTotal,
+        finalTotal: saleTotal,
         paymentStatus,
+        isOnCredit,
         invoiceType: dto.invoiceType ?? null,
         invoiceNumber: dto.invoiceNumber ?? null,
         notes: dto.notes ?? null,
@@ -154,7 +138,72 @@ export class SaleService {
       });
 
       await manager.save(sale);
-      // 🔒 3.1️⃣ Generar Receipt inmediatamente después de crear la venta
+
+      // 3.1️⃣ Validación y actualización de cuenta corriente (FIADO)
+      // Reads sale.finalTotal from the persisted row — never a recomputed local variable
+      const immutableTotal = Number(sale.finalTotal ?? sale.totalAmount);
+
+      if (paymentStatus === PaymentStatus.PENDING || isOnCredit) {
+        // pessimistic_write lock — prevents concurrent debt races for the same customer+shop
+        let customerShop = await manager.findOne(CustomerShop, {
+          where: { customerId: dto.customerId!, shopId: dto.shopId },
+          lock: { mode: 'pessimistic_write' },
+        });
+
+        if (!customerShop) {
+          customerShop = manager.create(CustomerShop, {
+            customerId: dto.customerId!,
+            shopId: dto.shopId,
+            creditLimit: 0,
+            currentDebt: 0,
+            isBlocked: false,
+          });
+          await manager.save(customerShop);
+        }
+
+        if (customerShop.isBlocked) {
+          throw new BadRequestException(
+            'El cliente está bloqueado y no puede realizar compras a crédito',
+          );
+        }
+
+        const newDebt = Number(customerShop.currentDebt) + immutableTotal;
+
+        // Validate credit limit only when one is set (> 0)
+        if (customerShop.creditLimit > 0 && newDebt > customerShop.creditLimit) {
+          throw new BadRequestException(
+            `Límite de crédito excedido. Disponible: $${(
+              customerShop.creditLimit - Number(customerShop.currentDebt)
+            ).toFixed(2)}`,
+          );
+        }
+
+        // Task 4 — safe default: currentDebt never goes below 0
+        customerShop.currentDebt = Math.max(0, newDebt);
+        await manager.save(customerShop);
+      }
+
+      // 3.2️⃣ Movimiento de cuenta corriente DEBT + integrity check
+      if (paymentStatus === PaymentStatus.PENDING && dto.customerId) {
+        await manager.save(
+          manager.create(CustomerAccountMovement, {
+            customerId: dto.customerId,
+            shopId: dto.shopId,
+            type: CustomerAccountMovementType.DEBT,
+            amount: immutableTotal,
+            description: `Venta a crédito`,
+            referenceId: sale.id,
+            createdBy: user.id,
+          }),
+        );
+
+        // Non-blocking integrity check — logs mismatch, never throws
+        await this.customerAccountService.validateCustomerDebt(
+          dto.customerId,
+          dto.shopId,
+          manager,
+        );
+      }
 
       let shopUsers: User[] | null = null;
       // 4️⃣ Items + stock + history
@@ -264,8 +313,14 @@ export class SaleService {
                 userId: u.id,
                 shopId: dto.shopId,
                 type: NotificationType.LOW_STOCK,
-                message: `Stock bajo: ${shopProduct.product.name} tiene ${updatedStock} unidades restantes`,
+                title: 'Stock bajo',
+                message: `${shopProduct.product.name} tiene ${updatedStock} unidades restantes`,
                 severity: NotificationSeverity.WARNING,
+                metadata: {
+                  shopProductId: shopProduct.id,
+                  productName: shopProduct.product.name,
+                  remainingStock: updatedStock,
+                },
                 deduplicationKey: `LOW_STOCK:${shopProduct.id}:${u.id}:${today}`,
               },
               manager,
@@ -324,6 +379,35 @@ export class SaleService {
           },
         }),
       );
+
+      // 7️⃣ Notify OWNER and MANAGER about the new sale
+      const notificationRecipients =
+        shopUsers ??
+        (await manager.find(User, {
+          relations: { userShops: true },
+          where: { userShops: { shopId: dto.shopId } },
+        }));
+
+      for (const recipient of notificationRecipients.filter((u) =>
+        [UserRole.OWNER, UserRole.MANAGER].includes(u.role),
+      )) {
+        await this.notificationService.createNotification(
+          {
+            userId: recipient.id,
+            shopId: dto.shopId,
+            type: NotificationType.SALE_CREATED,
+            title: 'Nueva venta registrada',
+            message: `Venta por $${Number(sale.totalAmount).toFixed(2)} registrada`,
+            severity: NotificationSeverity.SUCCESS,
+            metadata: {
+              saleId: sale.id,
+              amount: sale.totalAmount,
+              paymentStatus: sale.paymentStatus,
+            },
+          },
+          manager,
+        );
+      }
 
       // 🔒 Generar Receipt DESPUÉS de tener los items creados
 
@@ -385,6 +469,7 @@ export class SaleService {
   async getAll(
     filters: {
       shopId?: string;
+      customerId?: string;
       fromDate?: string;
       toDate?: string;
       page?: number;
@@ -419,6 +504,10 @@ export class SaleService {
         where.shopId = filters.shopId;
       }
       // si no hay shopId → ve todas
+    }
+
+    if (filters.customerId) {
+      where.customerId = filters.customerId;
     }
 
     // 📅 RANGO DE FECHAS
@@ -681,29 +770,60 @@ export class SaleService {
 
       await manager.save(sale); // ✅ ahora es seguro
 
-      // 6️⃣ Lógica FIADO / balance cliente
-      if (sale.customerId) {
-        const customer = await manager.findOne(Customer, {
-          where: { id: sale.customerId, shopId: sale.shopId },
+      // 6️⃣ Lógica FIADO / cuenta corriente
+      // Covers both isOnCredit=true and legacy PENDING sales
+      if (sale.customerId && previousPaymentStatus === PaymentStatus.PENDING) {
+        // pessimistic_write lock — prevents concurrent debt races for the same customer+shop
+        const customerShop = await manager.findOne(CustomerShop, {
+          where: { customerId: sale.customerId, shopId: sale.shopId },
+          lock: { mode: 'pessimistic_write' },
         });
 
-        if (!customer) {
-          throw new BadRequestException('Cliente no encontrado');
+        if (!customerShop) {
+          // Legacy sale without CustomerShop record — skip debt update
+          return {
+            id: sale.id,
+            totalAmount: sale.totalAmount,
+            paymentStatus: sale.paymentStatus,
+            updatedAt: new Date(),
+          };
         }
 
-        // PENDING → PAID
+        // PENDING → PAID: collect payment, reduce debt, create cash movement
         if (
           previousPaymentStatus === PaymentStatus.PENDING &&
           sale.paymentStatus === PaymentStatus.PAID
         ) {
-          await manager.decrement(
-            Customer,
-            { id: customer.id },
-            'currentBalance',
-            previousTotal,
+          customerShop.currentDebt = Math.max(
+            0,
+            Number(customerShop.currentDebt) - previousTotal,
           );
 
-          const movement = manager.create(CashMovement, {
+          // Auto-unblock when debt returns within limit
+          if (
+            customerShop.isBlocked &&
+            (customerShop.creditLimit === 0 ||
+              customerShop.currentDebt <= customerShop.creditLimit)
+          ) {
+            customerShop.isBlocked = false;
+          }
+
+          await manager.save(customerShop);
+
+          // Ledger entry: debt settled via sale update
+          await manager.save(
+            manager.create(CustomerAccountMovement, {
+              customerId: sale.customerId,
+              shopId: sale.shopId,
+              type: CustomerAccountMovementType.PAYMENT,
+              amount: previousTotal,
+              description: `Cobro venta fiada ${sale.id}`,
+              referenceId: sale.id,
+              createdBy: user.id,
+            }),
+          );
+
+          const cashMovement = manager.create(CashMovement, {
             cashRegisterId: currentRegister.id,
             shopId: sale.shopId,
             userId: user.id,
@@ -713,12 +833,12 @@ export class SaleService {
             saleId: sale.id,
           });
 
-          await manager.save(movement);
-          sale.cashMovement = movement;
+          await manager.save(cashMovement);
+          sale.cashMovement = cashMovement;
           await manager.save(sale);
         }
 
-        // sigue FIADO → ajustar diferencia
+        // Still PENDING → adjust debt difference
         if (
           previousPaymentStatus === PaymentStatus.PENDING &&
           sale.paymentStatus === PaymentStatus.PENDING
@@ -726,9 +846,9 @@ export class SaleService {
           const diff = sale.totalAmount - previousTotal;
 
           if (diff !== 0) {
-            if (customer.creditLimit != null) {
+            if (customerShop.creditLimit > 0 && diff > 0) {
               const available =
-                customer.creditLimit - (customer.currentBalance ?? 0);
+                customerShop.creditLimit - Number(customerShop.currentDebt);
 
               if (diff > available) {
                 throw new BadRequestException(
@@ -737,12 +857,20 @@ export class SaleService {
               }
             }
 
-            await manager.increment(
-              Customer,
-              { id: customer.id },
-              'currentBalance',
-              diff,
+            customerShop.currentDebt = Math.max(
+              0,
+              Number(customerShop.currentDebt) + diff,
             );
+
+            // Auto-block if over limit after adjustment
+            if (
+              customerShop.creditLimit > 0 &&
+              customerShop.currentDebt > customerShop.creditLimit
+            ) {
+              customerShop.isBlocked = true;
+            }
+
+            await manager.save(customerShop);
           }
         }
       }
@@ -780,6 +908,10 @@ export class SaleService {
         throw new BadRequestException('La venta ya está cancelada');
       }
 
+      // Capture before mutation so snapshot is accurate
+      const previousStatus = sale.status;
+      const previousPaymentStatus = sale.paymentStatus;
+
       // caja cerrada → no se toca
       if (sale.cashMovement?.cashRegisterId) {
         const register = await this.cashRegisterService.getById(
@@ -789,6 +921,59 @@ export class SaleService {
         if (register?.status === CashRegisterStatus.CLOSED) {
           throw new BadRequestException(
             'No se puede cancelar una venta de una caja cerrada',
+          );
+        }
+      }
+
+      // Revertir deuda en cuenta corriente si era venta a crédito pendiente
+      if (sale.customerId && sale.paymentStatus === PaymentStatus.PENDING) {
+        // pessimistic_write lock — prevents concurrent debt races for the same customer+shop
+        const customerShop = await manager.findOne(CustomerShop, {
+          where: { customerId: sale.customerId, shopId: sale.shopId },
+          lock: { mode: 'pessimistic_write' },
+        });
+
+        if (customerShop) {
+          const reversed = Math.min(
+            Number(sale.totalAmount),
+            Number(customerShop.currentDebt),
+          );
+
+          // Task 4 — safe default: currentDebt never goes below 0
+          customerShop.currentDebt = Math.max(
+            0,
+            Number(customerShop.currentDebt) - reversed,
+          );
+
+          // Auto-unblock when debt returns within limit
+          if (
+            customerShop.isBlocked &&
+            (customerShop.creditLimit === 0 ||
+              customerShop.currentDebt <= customerShop.creditLimit)
+          ) {
+            customerShop.isBlocked = false;
+          }
+
+          await manager.save(customerShop);
+
+          // Ledger reversal entry
+          await manager.save(
+            manager.create(CustomerAccountMovement, {
+              customerId: sale.customerId,
+              shopId: sale.shopId,
+              type: CustomerAccountMovementType.PAYMENT,
+              amount: reversed,
+              description: `Cancelación de venta ${sale.id}`,
+              referenceId: sale.id,
+              createdBy: user.id,
+            }),
+          );
+
+          // Non-blocking integrity check — logs mismatch, never throws
+          await this.customerAccountService.validateCustomerDebt(
+            sale.customerId,
+            sale.shopId,
+            manager,
           );
         }
       }
@@ -829,8 +1014,8 @@ export class SaleService {
             reason: dto.reason,
             cancelledAt: sale.cancelledAt,
             cancelledBy: user.id,
-            previousStatus: SaleStatus.COMPLETED,
-            previousPaymentStatus: sale.paymentStatus,
+            previousStatus,
+            previousPaymentStatus,
           },
         }),
       );
@@ -859,8 +1044,10 @@ export class SaleService {
             userId: recipient.id,
             shopId: sale.shopId,
             type: NotificationType.SALE_CANCELED,
-            message: `Venta ${sale.id} anulada por $${sale.totalAmount}`,
+            title: 'Venta anulada',
+            message: `Venta anulada por $${sale.totalAmount}`,
             severity: NotificationSeverity.INFO,
+            metadata: { saleId: sale.id, amount: sale.totalAmount },
           },
           manager,
         );

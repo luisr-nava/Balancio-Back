@@ -6,6 +6,6 @@
     "deleteOutDir": true
   },
   "watchOptions": {
-    "excludeDirectories": ["node_modules", "dist"]
+    "excludeDirectories": ["node_modules", "dist", "src/assets", ".git"]
   }
 }
