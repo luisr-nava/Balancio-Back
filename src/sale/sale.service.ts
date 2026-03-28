@@ -1059,11 +1059,16 @@ export class SaleService {
 
   async markSaleAsPaidFromWebhook(saleId: string) {
     return this.dataSource.transaction(async (manager) => {
-      const sale = await manager.findOne(Sale, { where: { id: saleId } });
+      const sale = await manager.findOne(Sale, {
+        where: { id: saleId },
+        lock: { mode: 'pessimistic_write' },
+      });
+
+      if (!sale) throw new BadRequestException('Venta no encontrada');
 
       const cashRegister = await this.cashRegisterService.getCurrentForUser(
-        sale!.shopId,
-        sale!.employeeId!,
+        sale.shopId,
+        sale.employeeId!,
       );
 
       if (!cashRegister) {
@@ -1071,7 +1076,6 @@ export class SaleService {
           'No hay caja abierta para registrar el pago',
         );
       }
-      if (!sale) throw new BadRequestException('Venta no encontrada');
 
       if (sale.paymentStatus === PaymentStatus.PAID) return;
 

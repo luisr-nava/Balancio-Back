@@ -19,6 +19,7 @@ interface EnvVars {
   STRIPE_WEBHOOK_SECRET?: string;
   STRIPE_PRICE_BASIC?: string;
   STRIPE_PRICE_PRO?: string;
+  MP_WEBHOOK_SECRET?: string;
 }
 
 const log = new Logger('EnvVars - ');
@@ -45,6 +46,7 @@ const envVarsSchema = joi
     STRIPE_WEBHOOK_SECRET: joi.string().optional(),
     STRIPE_PRICE_BASIC: joi.string().optional(),
     STRIPE_PRICE_PRO: joi.string().optional(),
+    MP_WEBHOOK_SECRET: joi.string().optional(),
   })
   .unknown(true);
 
@@ -72,4 +74,5 @@ export const envs = {
   stripeWebhookSecret: envVars.STRIPE_WEBHOOK_SECRET,
   stripePriceBasic: envVars.STRIPE_PRICE_BASIC,
   stripePricePro: envVars.STRIPE_PRICE_PRO,
+  mpWebhookSecret: envVars.MP_WEBHOOK_SECRET,
 };

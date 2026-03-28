@@ -1,4 +1,4 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import { ConflictException, Injectable, Logger } from '@nestjs/common';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -15,9 +15,17 @@ import { Shop } from '@/shop/entities/shop.entity';
 import { BulkUpdateProductDto } from './dto/bulk-update-product.dto';
 import { DataSource } from 'typeorm';
 import { CloudinaryService } from '@/common/services/cloudinary.service';
+import { PurchaseItem } from '@/purchase/entities/purchase-item.entity';
+import { PurchaseReturnItem } from '@/purchase-return/entities/purchase-return-item.entity';
+import { ReplacementItem } from '@/purchase-return/entities/replacement-item.entity';
+import { PromotionItem } from '@/promotion/entities/promotion-item.entity';
 type DeleteScope = 'ONE' | 'MULTIPLE' | 'ALL';
+const BULK_DELETE_BATCH_SIZE = 5;
+
 @Injectable()
 export class ProductService {
+  private readonly logger = new Logger(ProductService.name);
+
   constructor(
     private readonly dataSource: DataSource,
 
@@ -34,6 +42,18 @@ export class ProductService {
     private readonly measurementUnitRepository: Repository<MeasurementUnit>,
     @InjectRepository(Shop)
     private readonly shopRepository: Repository<Shop>,
+
+    @InjectRepository(PurchaseItem)
+    private readonly purchaseItemRepository: Repository<PurchaseItem>,
+
+    @InjectRepository(PurchaseReturnItem)
+    private readonly purchaseReturnItemRepository: Repository<PurchaseReturnItem>,
+
+    @InjectRepository(ReplacementItem)
+    private readonly replacementItemRepository: Repository<ReplacementItem>,
+
+    @InjectRepository(PromotionItem)
+    private readonly promotionItemRepository: Repository<PromotionItem>,
   ) {}
   async create(
     dto: CreateProductDto,
@@ -391,6 +411,84 @@ export class ProductService {
     }
   }
 
+  async bulkDeleteProducts(productIds: string[], user: JwtPayload) {
+    // Fix 4 — input validation
+    if (!productIds.length) {
+      return { deleted: [], deactivated: [], notFound: [], failed: [] };
+    }
+    if (productIds.length > 100) {
+      throw new ConflictException('No se pueden eliminar más de 100 productos a la vez');
+    }
+    const uniqueIds = [...new Set(productIds)];
+
+    const products = await this.productRepository.find({
+      where: { id: In(uniqueIds) },
+      relations: { shopProducts: true },
+      select: {
+        id: true,
+        imagePublicId: true,
+        shopProducts: { id: true, shopId: true },  // Fix 1 — needs shopId for tenant filter
+      },
+    });
+
+    const foundIds = new Set(products.map((p) => p.id));
+    const notFound = uniqueIds.filter((id) => !foundIds.has(id));
+
+    const deleted: string[] = [];
+    const deactivated: string[] = [];
+    const failed: { productId: string; reason: string }[] = [];
+
+    for (let i = 0; i < products.length; i += BULK_DELETE_BATCH_SIZE) {
+      const batch = products.slice(i, i + BULK_DELETE_BATCH_SIZE);
+
+      await Promise.all(
+        batch.map(async (product) => {
+          try {
+            // Fix 1 — multi-tenant security: MANAGER only processes their shop
+            const shopProductsToProcess =
+              user.role !== 'OWNER'
+                ? product.shopProducts.filter((sp) => sp.shopId === user.shopId)
+                : product.shopProducts;
+
+            await Promise.all(
+              shopProductsToProcess.map((sp) =>
+                this.deleteShopProduct(sp.id, user),
+              ),
+            );
+
+            const remaining = await this.shopProductRepository.count({
+              where: { productId: product.id },
+            });
+
+            if (remaining === 0) {
+              await this.productRepository.delete(product.id);
+              deleted.push(product.id);
+              this.logger.debug(`Product ${product.id} deleted`);
+
+              // Fix 3 — Cloudinary after DB delete, non-blocking
+              if (product.imagePublicId) {
+                CloudinaryService.deleteImage(product.imagePublicId).catch((err) =>
+                  this.logger.warn(
+                    `Failed to delete Cloudinary image ${product.imagePublicId}: ${err?.message}`,
+                  ),
+                );
+              }
+            } else {
+              deactivated.push(product.id);
+              this.logger.debug(`Product ${product.id} deactivated (${remaining} ShopProduct(s) remain)`);
+            }
+          } catch (err) {
+            const reason = err instanceof Error ? err.message : String(err);
+            failed.push({ productId: product.id, reason });
+            this.logger.warn(`Product ${product.id} failed: ${reason}`);
+          }
+        }),
+      );
+    }
+
+    return { deleted, deactivated, notFound, failed };
+  }
+
   async deleteProduct(
     productId: string,
     user: JwtPayload,
@@ -558,6 +656,30 @@ export class ProductService {
     });
   }
 
+  private async hasPurchases(shopProductId: string): Promise<boolean> {
+    return this.purchaseItemRepository.exist({
+      where: { shopProduct: { id: shopProductId } },
+    });
+  }
+
+  private async hasPurchaseReturns(shopProductId: string): Promise<boolean> {
+    return this.purchaseReturnItemRepository.exist({
+      where: { shopProductId },
+    });
+  }
+
+  private async hasReplacementItems(shopProductId: string): Promise<boolean> {
+    return this.replacementItemRepository.exist({
+      where: { shopProductId },
+    });
+  }
+
+  private async hasPromotionItems(shopProductId: string): Promise<boolean> {
+    return this.promotionItemRepository.exist({
+      where: { shopProductId },
+    });
+  }
+
   async deleteShopProduct(shopProductId: string, user: JwtPayload) {
     const shopProduct = await this.shopProductRepository.findOne({
       where: { id: shopProductId },
@@ -565,9 +687,16 @@ export class ProductService {
 
     if (!shopProduct) return;
 
-    const hasSales = await this.hasSales(shopProductId);
+    const [hasSales, hasPurchases, hasPurchaseReturns, hasReplacements, hasPromotions] =
+      await Promise.all([
+        this.hasSales(shopProductId),
+        this.hasPurchases(shopProductId),
+        this.hasPurchaseReturns(shopProductId),
+        this.hasReplacementItems(shopProductId),
+        this.hasPromotionItems(shopProductId),
+      ]);
 
-    if (hasSales) {
+    if (hasSales || hasPurchases || hasPurchaseReturns || hasReplacements || hasPromotions) {
       if (!shopProduct.isActive) return;
 
       shopProduct.isActive = false;
@@ -579,7 +708,7 @@ export class ProductService {
           shopProductId,
           userId: user.id,
           changeType: ProductHistoryChangeType.DEACTIVATED,
-          note: 'Producto desactivado (ventas asociadas)',
+          note: 'Producto desactivado (ventas o compras asociadas)',
         }),
       );
 

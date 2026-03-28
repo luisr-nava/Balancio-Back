@@ -140,7 +140,7 @@ export class AuthController {
     return this.authService.getUserById(user.id);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Get('get-employees')
   @Roles(UserRole.OWNER, UserRole.MANAGER)
   getEmployees(@GetUser() user: User) {
@@ -157,7 +157,7 @@ export class AuthController {
     return this.authService.updateUser(userId, dto, requester);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.OWNER)
   @Patch(':id/role')
   updateUserRole(

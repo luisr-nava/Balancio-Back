@@ -357,7 +357,7 @@ export class AuthService {
       return genericResponse;
     }
 
-    const hashedToken = crypto.createHash('sha256').digest('hex');
+    const hashedToken = crypto.randomBytes(32).toString('hex');
 
     await this.verificationCodeRepository.save({
       userId: user.id,
@@ -545,12 +545,12 @@ export class AuthService {
       where: { id: targetUserId },
     });
 
-    if (!target?.isActive) {
-      throw new BadRequestException('El usuario ya se encuentra desactivado');
-    }
-
     if (!target) {
       throw new NotFoundException('Usuario no encontrado');
+    }
+
+    if (!target.isActive) {
+      throw new BadRequestException('El usuario ya se encuentra desactivado');
     }
 
     if (target.role === UserRole.OWNER) {

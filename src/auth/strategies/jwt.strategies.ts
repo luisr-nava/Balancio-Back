@@ -40,12 +40,12 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
 
     const user = await this.userRepository.findOneBy({ id: sub });
 
-    if (!user || !user.isActive) {
-      throw new UnauthorizedException('Usuario desactivado');
-    }
-
     if (!user) {
       throw new UnauthorizedException('Usuario no encontrado');
+    }
+
+    if (!user.isActive) {
+      throw new UnauthorizedException('Usuario desactivado');
     }
 
     return user;

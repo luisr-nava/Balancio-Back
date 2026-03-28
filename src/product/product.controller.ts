@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Controller,
   Get,
   Post,
@@ -11,6 +12,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { ProductService } from './product.service';
+import { ProductImportService } from './import/product-import.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { JwtAuthGuard } from '@/auth/guards/jwt-auth.guard';
@@ -23,7 +25,10 @@ import { memoryStorage } from 'multer';
 import { UploadedFile } from '@nestjs/common';
 @Controller('product')
 export class ProductController {
-  constructor(private readonly productService: ProductService) {}
+  constructor(
+    private readonly productService: ProductService,
+    private readonly productImportService: ProductImportService,
+  ) {}
   @UseGuards(JwtAuthGuard)
   @UseInterceptors(
     FileInterceptor('image', {
@@ -73,6 +78,31 @@ export class ProductController {
     );
   }
 
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+      fileFilter: (_req, file, cb) => {
+        if (!file.originalname.match(/\.xlsx$/i)) {
+          return cb(
+            new BadRequestException('Solo se permiten archivos .xlsx'),
+            false,
+          );
+        }
+        cb(null, true);
+      },
+    }),
+  )
+  @Post('import')
+  async importProducts(
+    @UploadedFile() file: any,
+    @GetUser() user: JwtPayload,
+  ) {
+    if (!file) throw new BadRequestException('Archivo .xlsx requerido');
+    return this.productImportService.importFromExcel(file.buffer, user);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.productService.findOne(+id);
@@ -95,6 +125,15 @@ export class ProductController {
     const image = file ? { buffer: file.buffer } : undefined;
 
     return this.productService.updateProduct(productId, dto, user, image);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete('bulk')
+  async bulkRemove(
+    @Body() body: { productIds: string[] },
+    @GetUser() user: JwtPayload,
+  ) {
+    return this.productService.bulkDeleteProducts(body.productIds, user);
   }
 
   @UseGuards(JwtAuthGuard)

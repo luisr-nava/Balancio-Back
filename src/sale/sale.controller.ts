@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Controller,
   Get,
   Post,
@@ -8,6 +9,7 @@ import {
   UseInterceptors,
   Query,
   UseGuards,
+  Headers,
 } from '@nestjs/common';
 import { SaleService } from './sale.service';
 import { CreateSaleDto } from './dto/create-sale.dto';
@@ -84,10 +86,21 @@ export class SaleController {
   }
 
   @Post('webhooks/mercadopago')
-  async mercadoPagoWebhook(@Body() body: any) {
-    if (body.type !== 'payment') return;
+  async mercadoPagoWebhook(
+    @Body() body: any,
+    @Headers('x-signature') xSignature: string,
+  ) {
+    if (body.type !== 'payment') return { received: true };
 
-    const paymentId = body.data.id;
+    const paymentId = body.data?.id;
+    if (!paymentId || typeof paymentId !== 'string') {
+      throw new BadRequestException('Payload inválido: data.id ausente o incorrecto');
+    }
+    if (!xSignature) {
+      throw new BadRequestException('Cabecera x-signature requerida');
+    }
+
+    this.mercadoPagoService.validateWebhookSignature(paymentId, xSignature);
 
     const mpPayment = await this.mercadoPagoService.getPayment(paymentId);
 
