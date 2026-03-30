@@ -79,6 +79,7 @@ export class ProductService {
       const product = queryRunner.manager.create(Product, {
         name: dto.name,
         description: dto.description,
+        barcode: dto.barcode || null,
         measurementUnitId: dto.measurementUnitId,
         allowPriceOverride: dto.allowPriceOverride ?? false,
       });
@@ -331,7 +332,7 @@ export class ProductService {
       Object.assign(product, {
         name: dto.name ?? product.name,
         description: dto.description ?? product.description,
-        barcode: dto.barcode ?? product.barcode,
+        barcode: dto.barcode !== undefined ? (dto.barcode || null) : product.barcode,
         measurementUnitId: dto.measurementUnitId ?? product.measurementUnitId,
       });
 

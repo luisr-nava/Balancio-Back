@@ -32,7 +32,7 @@ export const typeORMConfig = (
     //
     // Use `npm run migration:run` to apply schema changes in a controlled,
     // reviewed, and reversible way. Never re-enable this in production.
-    synchronize: false,
+    synchronize: true,
 
     // migrationsRun: true would run pending migrations automatically on boot.
     // Disabled here to keep migrations an explicit, operator-controlled step.

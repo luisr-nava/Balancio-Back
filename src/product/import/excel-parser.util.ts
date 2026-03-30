@@ -40,7 +40,11 @@ const STRING_FIELDS = new Set<keyof Omit<RawImportRow, 'rowNumber'>>([
 
 export async function parseExcelBuffer(buffer: Buffer): Promise<RawImportRow[]> {
   const workbook = new Workbook();
-  await workbook.xlsx.load(buffer);
+  const arrayBuffer = buffer.buffer.slice(
+    buffer.byteOffset,
+    buffer.byteOffset + buffer.byteLength,
+  ) as ArrayBuffer;
+  await workbook.xlsx.load(arrayBuffer);
 
   const sheet = workbook.worksheets[0];
   if (!sheet) return [];
