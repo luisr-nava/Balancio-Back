@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -109,6 +110,13 @@ export class ProductCategoryService {
     if (!category) {
       throw new NotFoundException('Categoría no encontrada');
     }
+
+    if (category.isSystem) {
+      throw new BadRequestException(
+        'No se puede modificar una categoría del sistema',
+      );
+    }
+
     const existingCategory = await this.productCategoryRepository.findOne({
       where: {
         name: dto.name,
@@ -167,6 +175,12 @@ export class ProductCategoryService {
 
     if (!category) {
       throw new NotFoundException('Categoría no encontrada');
+    }
+
+    if (category.isSystem) {
+      throw new BadRequestException(
+        'No se puede eliminar una categoría del sistema',
+      );
     }
 
     const now = new Date();

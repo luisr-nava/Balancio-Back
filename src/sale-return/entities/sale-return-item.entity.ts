@@ -47,7 +47,6 @@ export class SaleReturnItem {
   shopProductId: string;
 
   @Column({
-    
     type: 'enum',
     enum: ReturnCondition,
     default: ReturnCondition.SELLABLE,

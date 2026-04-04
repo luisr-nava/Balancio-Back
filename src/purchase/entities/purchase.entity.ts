@@ -16,6 +16,7 @@ import { PaymentMethod } from '@/payment-method/entities/payment-method.entity';
 import { PurchaseItem } from './purchase-item.entity';
 import { CreditNoteApplication } from '@/purchase-return/entities/credit-note-application.entity';
 import { CashMovement } from '@/cash-movement/entities/cash-movement.entity';
+import { User } from '@/auth/entities/user.entity';
 
 @Entity()
 @Index(['paymentMethodId'])
@@ -30,6 +31,9 @@ export class Purchase {
 
   @Column()
   paymentMethodId: string;
+
+  @Column({ type: 'uuid', nullable: true })
+  employeeId?: string | null;
 
   @Column('float', { nullable: true })
   totalAmount?: number | null;
@@ -71,6 +75,10 @@ export class Purchase {
 
   @ManyToOne(() => PaymentMethod)
   paymentMethod: PaymentMethod;
+
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'employeeId' })
+  employee?: User | null;
 
   @OneToMany(() => PurchaseItem, (item) => item.purchase)
   items: PurchaseItem[];

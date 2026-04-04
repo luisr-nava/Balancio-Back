@@ -1,11 +1,13 @@
 import {
+  IsArray,
   IsBoolean,
+  IsDateString,
   IsEmail,
+  IsNumber,
   IsOptional,
   IsString,
+  IsUUID,
   Length,
-  IsNumber,
-  IsDateString,
 } from 'class-validator';
 
 export class UpdateUserDto {
@@ -53,4 +55,9 @@ export class UpdateUserDto {
   @IsOptional()
   @IsString()
   emergencyContact?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsUUID('all', { each: true })
+  shopIds?: string[];
 }

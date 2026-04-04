@@ -47,6 +47,12 @@ export class IncomeController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Get(':id')
+  getById(@Param('id') id: string, @GetUser() user: JwtPayload) {
+    return this.incomeService.getById(id, user);
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Patch(':id')
   update(
     @Param('id') id: string,

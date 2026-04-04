@@ -163,7 +163,7 @@ export class SaleSubscriber implements EntitySubscriberInterface<Sale> {
   async afterUpdate(event: UpdateEvent<Sale>) {
     if (!event.databaseEntity || !event.entity) return;
 
-    const oldSale = event.databaseEntity as Sale;
+    const oldSale = event.databaseEntity;
     const newSale = event.entity as Sale;
 
     const delta = newSale.totalAmount - oldSale.totalAmount;
@@ -213,7 +213,7 @@ export class IncomeSubscriber implements EntitySubscriberInterface<Income> {
   async afterUpdate(event: UpdateEvent<Income>) {
     if (!event.databaseEntity || !event.entity) return;
 
-    const oldIncome = event.databaseEntity as Income;
+    const oldIncome = event.databaseEntity;
     const newIncome = event.entity as Income;
 
     const delta = newIncome.amount - oldIncome.amount;
@@ -313,7 +313,7 @@ export class ExpenseSubscriber implements EntitySubscriberInterface<Expense> {
   async afterUpdate(event: UpdateEvent<Expense>) {
     if (!event.databaseEntity || !event.entity) return;
 
-    const oldExpense = event.databaseEntity as Expense;
+    const oldExpense = event.databaseEntity;
     const newExpense = event.entity as Expense;
 
     const delta = newExpense.amount - oldExpense.amount;
@@ -365,7 +365,7 @@ export class PurchaseSubscriber implements EntitySubscriberInterface<Purchase> {
   async afterUpdate(event: UpdateEvent<Purchase>) {
     if (!event.databaseEntity || !event.entity) return;
 
-    const oldPurchase = event.databaseEntity as Purchase;
+    const oldPurchase = event.databaseEntity;
     const newPurchase = event.entity as Purchase;
 
     const delta =

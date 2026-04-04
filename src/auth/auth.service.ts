@@ -9,9 +9,10 @@ import {
 import { JwtPayload, TokenExpiredError, JsonWebTokenError } from 'jsonwebtoken';
 import { CreateUserDto } from './dto/create-user.dto';
 import { User, UserRole } from './entities/user.entity';
+import { UserShop, UserShopRole } from './entities/user-shop.entity';
 import * as bcrypt from 'bcrypt';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DeepPartial, In, Repository } from 'typeorm';
+import { Brackets, DeepPartial, EntityManager, In, Repository } from 'typeorm';
 import { EmailService } from '@/email/email.service';
 import * as crypto from 'crypto';
 import { VerificationCode } from './entities/verification-code.entity';
@@ -27,6 +28,8 @@ import {
   NotificationSeverity,
   NotificationType,
 } from '@/notification/entities/notification.entity';
+import { formatNotification } from '@/notification/notification-formatter';
+import { Shop } from '@/shop/entities/shop.entity';
 @Injectable()
 export class AuthService {
   constructor(
@@ -34,6 +37,10 @@ export class AuthService {
     private readonly authRepository: Repository<User>,
     @InjectRepository(VerificationCode)
     private readonly verificationCodeRepository: Repository<VerificationCode>,
+    @InjectRepository(UserShop)
+    private readonly userShopRepository: Repository<UserShop>,
+    @InjectRepository(Shop)
+    private readonly shopRepository: Repository<Shop>,
     private readonly billingService: BillingService,
     private readonly emailService: EmailService,
     private readonly jwtService: JwtService,
@@ -41,7 +48,7 @@ export class AuthService {
   ) {}
 
   async createUser(createUserDto: CreateUserDto) {
-    const { password, role: roleInput, ...user } = createUserDto;
+    const { password, role: roleInput, shopIds, ...user } = createUserDto;
 
     await this.validateEmailUnique(user.email);
 
@@ -65,7 +72,7 @@ export class AuthService {
     };
   }
   async createEmployee(createUserDto: CreateUserDto, requester: JwtPayload) {
-    const { password, role, ...user } = createUserDto;
+    const { password, role, shopIds, ...user } = createUserDto;
 
     if (!role) {
       throw new BadRequestException('El rol es obligatorio');
@@ -85,6 +92,10 @@ export class AuthService {
     }
 
     await this.validateEmailUnique(user.email);
+    const assignedShopIds = await this.resolveEmployeeShopIds(
+      requester,
+      shopIds,
+    );
 
     const createUserPayload: DeepPartial<User> = {
       ...user,
@@ -94,8 +105,27 @@ export class AuthService {
       ownerId: requester.ownerId ?? requester.id, // 🔑 CLAVE
     };
 
-    const newUser = this.authRepository.create(createUserPayload);
-    const savedUser = await this.authRepository.save(newUser);
+    const userShopRole =
+      role === UserRole.MANAGER ? UserShopRole.MANAGER : UserShopRole.EMPLOYEE;
+
+    const savedUser = await this.authRepository.manager.transaction(
+      async (manager) => {
+        const newUser = manager.create(User, createUserPayload);
+        const persistedUser = await manager.save(User, newUser);
+
+        const relations = assignedShopIds.map((shopId) =>
+          manager.create(UserShop, {
+            userId: persistedUser.id,
+            shopId,
+            role: userShopRole,
+          }),
+        );
+
+        await manager.save(UserShop, relations);
+
+        return persistedUser;
+      },
+    );
 
     await this.sendVerificationCode(
       savedUser.id,
@@ -103,26 +133,29 @@ export class AuthService {
       savedUser.fullName,
     );
 
-    // Notify the owner (or the requester if they ARE the owner) about the new employee.
-    // If a MANAGER creates an employee, the owner (requester.ownerId) is notified.
-    // If an OWNER creates directly, they are notified themselves.
-    const notifyUserId = (requester.ownerId as string | null) ?? requester.id;
-    const roleLabel =
-      role === UserRole.MANAGER ? 'encargado' : 'empleado';
+  // Notify the owner (or the requester if they ARE the owner) about the new employee.
+  // If a MANAGER creates an employee, the owner (requester.ownerId) is notified.
+  // If an OWNER creates directly, they are notified themselves.
+  const notifyUserId = (requester.ownerId as string | null) ?? requester.id;
+  const metadata = {
+    employeeId: savedUser.id,
+    employeeName: savedUser.fullName,
+    role: savedUser.role,
+    createdBy: requester.id,
+  };
+  const { title, message } = formatNotification(
+    NotificationType.EMPLOYEE_CREATED,
+    metadata,
+  );
 
-    await this.notificationService.createNotification({
-      userId: notifyUserId,
-      type: NotificationType.EMPLOYEE_CREATED,
-      title: 'Nuevo integrante del equipo',
-      message: `Se agregó un nuevo ${roleLabel}: ${savedUser.fullName}`,
-      severity: NotificationSeverity.INFO,
-      metadata: {
-        employeeId: savedUser.id,
-        employeeName: savedUser.fullName,
-        role: savedUser.role,
-        createdBy: requester.id,
-      },
-    });
+  await this.notificationService.createNotification({
+    userId: notifyUserId,
+    type: NotificationType.EMPLOYEE_CREATED,
+    title,
+    message,
+    severity: NotificationSeverity.INFO,
+    metadata,
+  });
 
     return {
       message:
@@ -131,6 +164,50 @@ export class AuthService {
           : 'Empleado creado correctamente',
       userId: savedUser.id,
     };
+  }
+
+  private async resolveEmployeeShopIds(
+    requester: JwtPayload,
+    requestedShopIds?: string[],
+  ): Promise<string[]> {
+    if (requester.role === UserRole.OWNER) {
+      if (!requestedShopIds?.length) {
+        throw new BadRequestException('Debes seleccionar al menos una tienda');
+      }
+
+      const ownerShopIds = [...new Set(requestedShopIds)];
+
+      const allowedShopCount = await this.shopRepository.count({
+        where: {
+          id: In(ownerShopIds),
+          ownerId: requester.id,
+        },
+      });
+
+      if (allowedShopCount !== ownerShopIds.length) {
+        throw new ForbiddenException(
+          'No tienes acceso a una o más tiendas especificadas',
+        );
+      }
+
+      return ownerShopIds;
+    }
+
+    const managerShops = await this.userShopRepository.find({
+      where: { userId: requester.id },
+      select: ['shopId'],
+    });
+    const managerShopIds = [
+      ...new Set(managerShops.map((shop) => shop.shopId)),
+    ];
+
+    if (!managerShopIds.length) {
+      throw new ForbiddenException(
+        'No tienes tiendas asignadas para heredar al empleado',
+      );
+    }
+
+    return managerShopIds;
   }
 
   async login(loginDto: LoginDto) {
@@ -446,26 +523,92 @@ export class AuthService {
     };
   }
 
-  async getEmployeesByOwner(ownerId: string) {
-    const employees = await this.authRepository.find({
-      where: {
-        ownerId,
-        role: In([UserRole.EMPLOYEE, UserRole.MANAGER]),
-      },
-      select: {
-        id: true,
-        fullName: true,
-        email: true,
-        role: true,
-        phone: true,
-        dni: true,
-        address: true,
-        salary: true,
-        hireDate: true,
-        createdAt: true,
-      },
-      order: { createdAt: 'DESC' },
-    });
+  async getEmployeesByOwner(
+    ownerId: string,
+    filters: {
+      page?: number;
+      limit?: number;
+      search?: string;
+      role?: UserRole;
+      shopId?: string;
+    } = {},
+  ) {
+    const page = filters.page ?? 1;
+    const limit = filters.limit ?? 20;
+    const search = filters.search?.trim();
+
+    if (
+      filters.role &&
+      ![UserRole.EMPLOYEE, UserRole.MANAGER].includes(filters.role)
+    ) {
+      throw new BadRequestException('Rol inválido');
+    }
+
+    const employeesQb = this.authRepository
+      .createQueryBuilder('user')
+      .leftJoinAndSelect('user.userShops', 'userShop')
+      .leftJoinAndSelect('userShop.shop', 'shop')
+      .where('user.ownerId = :ownerId', { ownerId })
+      .andWhere('user.role IN (:...roles)', {
+        roles: [UserRole.EMPLOYEE, UserRole.MANAGER],
+      })
+      .select([
+        'user.id',
+        'user.fullName',
+        'user.email',
+        'user.role',
+        'user.phone',
+        'user.dni',
+        'user.address',
+        'user.salary',
+        'user.hireDate',
+        'user.createdAt',
+        'userShop.id',
+        'userShop.shopId',
+        'shop.id',
+        'shop.name',
+      ])
+      .distinct(true)
+      .orderBy('user.createdAt', 'DESC')
+      .addOrderBy('shop.name', 'ASC');
+
+    if (search) {
+      employeesQb.andWhere(
+        new Brackets((qb) => {
+          qb.where('user.fullName ILIKE :search', {
+            search: `%${search}%`,
+          }).orWhere('user.email ILIKE :search', {
+            search: `%${search}%`,
+          });
+        }),
+      );
+    }
+
+    if (filters.role) {
+      employeesQb.andWhere('user.role = :role', {
+        role: filters.role,
+      });
+    }
+
+    if (filters.shopId) {
+      employeesQb.andWhere((qb) => {
+        const subQuery = qb
+          .subQuery()
+          .select('1')
+          .from(UserShop, 'filterUserShop')
+          .where('filterUserShop.userId = user.id')
+          .andWhere('filterUserShop.shopId = :shopId')
+          .getQuery();
+
+        return `EXISTS ${subQuery}`;
+      });
+      employeesQb.setParameter('shopId', filters.shopId);
+    }
+
+    const [employees, total] = await employeesQb
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
 
     if (!employees.length) {
       throw new NotFoundException(
@@ -473,7 +616,31 @@ export class AuthService {
       );
     }
 
-    return employees;
+    const data = employees.map((employee) => ({
+      id: employee.id,
+      fullName: employee.fullName,
+      email: employee.email,
+      role: employee.role,
+      phone: employee.phone,
+      dni: employee.dni,
+      address: employee.address,
+      salary: employee.salary,
+      hireDate: employee.hireDate,
+      createdAt: employee.createdAt,
+      shops: (employee.userShops ?? [])
+        .filter((userShop) => userShop.shop)
+        .map((userShop) => ({
+          id: userShop.shop.id,
+          name: userShop.shop.name,
+        })),
+    }));
+
+    return {
+      data,
+      total,
+      page,
+      limit,
+    };
   }
 
   async updateUser(
@@ -493,12 +660,32 @@ export class AuthService {
 
     this.validateSalaryPermissions(requester, targetUser, dto);
 
-    Object.assign(targetUser, {
-      ...dto,
-      hireDate: dto.hireDate ? new Date(dto.hireDate) : targetUser.hireDate,
-    });
+    const { shopIds, ...userUpdates } = dto;
+    const resolvedShopIds =
+      shopIds !== undefined
+        ? await this.resolveShopIdsForUpdate(requester, shopIds)
+        : undefined;
 
-    await this.authRepository.save(targetUser);
+    await this.authRepository.manager.transaction(async (manager) => {
+      Object.assign(targetUser, {
+        ...userUpdates,
+        hireDate: userUpdates.hireDate
+          ? new Date(userUpdates.hireDate)
+          : targetUser.hireDate,
+      });
+
+      await manager.save(User, targetUser);
+
+      if (resolvedShopIds !== undefined) {
+        const userShopRole = this.getUserShopRoleForAssignment(targetUser.role);
+        await this.syncUserShopAssignments(
+          manager,
+          targetUser.id,
+          resolvedShopIds,
+          userShopRole,
+        );
+      }
+    });
 
     return {
       message: 'Usuario actualizado correctamente',
@@ -584,6 +771,7 @@ export class AuthService {
     fullName: string,
   ) {
     const code = crypto.randomBytes(4).toString('hex').toUpperCase();
+
     await this.verificationCodeRepository.update(
       {
         userId,
@@ -594,6 +782,7 @@ export class AuthService {
         isUsed: true,
       },
     );
+
     const verificationCode = this.verificationCodeRepository.create({
       userId,
       code,
@@ -603,7 +792,12 @@ export class AuthService {
 
     await this.verificationCodeRepository.save(verificationCode);
 
-    await this.emailService.sendVerificationEmail(email, code, fullName);
+    await this.emailService.sendVerificationEmail(
+      email,
+      code,
+      fullName,
+      userId,
+    );
   }
 
   private validateUpdatePermissions(requester: JwtPayload, target: User) {
@@ -649,7 +843,14 @@ export class AuthService {
     }
   }
 
-  private validateDeletePermissions(requester: JwtPayload, target: User) {
+  private async validateDeletePermissions(
+    requester: JwtPayload,
+    target: User,
+  ) {
+    if (requester.id === target.id) {
+      return;
+    }
+
     if (requester.role === UserRole.EMPLOYEE) {
       throw new ForbiddenException('No tenés permisos para eliminar usuarios');
     }
@@ -665,6 +866,142 @@ export class AuthService {
       throw new ForbiddenException(
         'Un encargado solo puede eliminar empleados',
       );
+    }
+
+    if (requester.role === UserRole.MANAGER || requester.role === UserRole.OWNER) {
+      const requesterShops = await this.userShopRepository.find({
+        where: { userId: requester.id },
+      });
+      const requesterShopIds = requesterShops.map((us) => us.shopId);
+
+      const targetShops = await this.userShopRepository.find({
+        where: { userId: target.id },
+      });
+      const targetShopIds = targetShops.map((us) => us.shopId);
+
+      const hasCommonShop = targetShopIds.some((shopId) =>
+        requesterShopIds.includes(shopId),
+      );
+
+      if (!hasCommonShop) {
+        throw new ForbiddenException(
+          'No tienes permisos para eliminar este usuario',
+        );
+      }
+    }
+  }
+
+  private async resolveShopIdsForUpdate(
+    requester: JwtPayload,
+    requestedShopIds: string[],
+  ): Promise<string[]> {
+    const uniqueShopIds = [...new Set(requestedShopIds)];
+
+    if (!uniqueShopIds.length) {
+      return [];
+    }
+
+    if (requester.role === UserRole.EMPLOYEE) {
+      throw new ForbiddenException('No tenés permisos para actualizar tiendas');
+    }
+
+    if (requester.role === UserRole.OWNER) {
+      const allowedShopCount = await this.shopRepository.count({
+        where: {
+          id: In(uniqueShopIds),
+          ownerId: requester.id,
+        },
+      });
+
+      if (allowedShopCount !== uniqueShopIds.length) {
+        throw new ForbiddenException(
+          'No tienes acceso a una o más tiendas especificadas',
+        );
+      }
+
+      return uniqueShopIds;
+    }
+
+    const requesterShops = await this.userShopRepository.find({
+      where: { userId: requester.id },
+      select: ['shopId'],
+    });
+    const allowedShopIds = new Set(requesterShops.map((shop) => shop.shopId));
+    const invalidShopIds = uniqueShopIds.filter(
+      (id) => !allowedShopIds.has(id),
+    );
+
+    if (invalidShopIds.length) {
+      throw new ForbiddenException(
+        'No tienes acceso a una o más tiendas especificadas',
+      );
+    }
+
+    return uniqueShopIds;
+  }
+
+  private getUserShopRoleForAssignment(role: UserRole): UserShopRole {
+    if (role === UserRole.MANAGER) {
+      return UserShopRole.MANAGER;
+    }
+
+    if (role === UserRole.EMPLOYEE) {
+      return UserShopRole.EMPLOYEE;
+    }
+
+    throw new BadRequestException(
+      'Solo se pueden asignar tiendas a empleados o encargados',
+    );
+  }
+
+  private async syncUserShopAssignments(
+    manager: EntityManager,
+    userId: string,
+    nextShopIds: string[],
+    role: UserShopRole,
+  ): Promise<void> {
+    const currentRelations = await manager.find(UserShop, {
+      where: { userId },
+      select: ['id', 'shopId', 'role'],
+    });
+
+    const existingShopIds = new Set(
+      currentRelations.map((relation) => relation.shopId),
+    );
+    const nextShopIdSet = new Set(nextShopIds);
+
+    const toAdd = nextShopIds.filter((shopId) => !existingShopIds.has(shopId));
+    const toRemove = currentRelations
+      .filter((relation) => !nextShopIdSet.has(relation.shopId))
+      .map((relation) => relation.shopId);
+    const toUpdateRoleIds = currentRelations
+      .filter(
+        (relation) =>
+          nextShopIdSet.has(relation.shopId) && relation.role !== role,
+      )
+      .map((relation) => relation.id);
+
+    if (toAdd.length) {
+      const relationsToInsert = toAdd.map((shopId) =>
+        manager.create(UserShop, {
+          userId,
+          shopId,
+          role,
+        }),
+      );
+
+      await manager.save(UserShop, relationsToInsert);
+    }
+
+    if (toRemove.length) {
+      await manager.delete(UserShop, {
+        userId,
+        shopId: In(toRemove),
+      });
+    }
+
+    if (toUpdateRoleIds.length) {
+      await manager.update(UserShop, { id: In(toUpdateRoleIds) }, { role });
     }
   }
 

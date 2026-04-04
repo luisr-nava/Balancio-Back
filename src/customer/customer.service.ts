@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { Customer } from './entities/customer.entity';
@@ -8,6 +12,7 @@ import { In, Repository } from 'typeorm';
 import { ShopService } from '@/shop/shop.service';
 import { JwtPayload } from 'jsonwebtoken';
 import { PaginatedServiceResult } from '@/common/pagination/pagination.types';
+import { UserShop } from '@/auth/entities/user-shop.entity';
 
 @Injectable()
 export class CustomerService {
@@ -16,6 +21,8 @@ export class CustomerService {
     private readonly customerRepository: Repository<Customer>,
     @InjectRepository(CustomerShop)
     private readonly customerShopRepository: Repository<CustomerShop>,
+    @InjectRepository(UserShop)
+    private readonly userShopRepo: Repository<UserShop>,
     private readonly shopAccessService: ShopService,
   ) {}
 
@@ -33,14 +40,18 @@ export class CustomerService {
     });
 
     const savedCustomer = await this.customerRepository.save(customer);
-    
 
     return {
       message: 'Cliente creado exitosamente',
       customer: savedCustomer,
     };
   }
-  async getAll(shopId: string | undefined, user: JwtPayload, page = 1, limit = 20) {
+  async getAll(
+    shopId: string | undefined,
+    user: JwtPayload,
+    page = 1,
+    limit = 20,
+  ) {
     const [customers, total] = await this.customerRepository.findAndCount({
       where: { shopId },
       order: { createdAt: 'DESC' },
@@ -49,7 +60,10 @@ export class CustomerService {
     });
 
     // Fetch per-shop credit state for returned customers in a single query
-    const shopAccountMap = new Map<string, { currentDebt: number; isBlocked: boolean }>();
+    const shopAccountMap = new Map<
+      string,
+      { currentDebt: number; isBlocked: boolean }
+    >();
     if (shopId && customers.length > 0) {
       const accounts = await this.customerShopRepository.find({
         where: {
@@ -59,7 +73,10 @@ export class CustomerService {
         select: ['customerId', 'currentDebt', 'isBlocked'],
       });
       for (const a of accounts) {
-        shopAccountMap.set(a.customerId, { currentDebt: a.currentDebt, isBlocked: a.isBlocked });
+        shopAccountMap.set(a.customerId, {
+          currentDebt: a.currentDebt,
+          isBlocked: a.isBlocked,
+        });
       }
     }
 
@@ -72,9 +89,17 @@ export class CustomerService {
     return { data, total };
   }
 
-  async update(id: string, dto: UpdateCustomerDto, shopId: string) {
+  async update(id: string, dto: UpdateCustomerDto, user: JwtPayload) {
     const customer = await this.customerRepository.findOneBy({ id });
     if (!customer) throw new NotFoundException();
+
+    const userShop = await this.userShopRepo.findOne({
+      where: { userId: user.id, shopId: customer.shopId },
+    });
+
+    if (!userShop) {
+      throw new ForbiddenException('No tienes acceso a este cliente');
+    }
 
     Object.assign(customer, dto);
     const updatedCustomer = await this.customerRepository.save(customer);

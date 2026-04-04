@@ -13,9 +13,27 @@ export class MeasurementUnitsSeed {
 
   async run() {
     const defaults = [
-      { name: 'Unidad', code: 'UNIT', isBaseUnit: true, isDefault: true },
-      { name: 'Kilogramo', code: 'KG', isBaseUnit: true, isDefault: true },
-      { name: 'Litro', code: 'L', isBaseUnit: true, isDefault: true },
+      {
+        name: 'Unidad',
+        code: 'UNIT',
+        isBaseUnit: true,
+        isDefault: true,
+        isSystem: true,
+      },
+      {
+        name: 'Kilogramo',
+        code: 'KG',
+        isBaseUnit: true,
+        isDefault: true,
+        isSystem: true,
+      },
+      {
+        name: 'Litro',
+        code: 'L',
+        isBaseUnit: true,
+        isDefault: true,
+        isSystem: true,
+      },
     ];
 
     const created: string[] = [];

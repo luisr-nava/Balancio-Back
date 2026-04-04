@@ -22,6 +22,7 @@ import { CashRegisterStatus } from '@/cash-register/enums/cash-register-status.e
 import { CashMovementService } from '@/cash-movement/cash-movement.service';
 import { CashRegisterService } from '@/cash-register/cash-register.service';
 import { CancelPurchaseDto } from './dto/cancel-purchase.dto';
+import { RealtimeEvents, RealtimeGateway } from '@/realtime/realtime.gateway';
 
 @Injectable()
 export class PurchaseService {
@@ -39,9 +40,10 @@ export class PurchaseService {
     private readonly cashMovementRepo: Repository<CashMovement>,
     private readonly cashRegisterService: CashRegisterService,
     private readonly cashMovementService: CashMovementService,
+    private readonly realtimeGateway: RealtimeGateway,
   ) {}
   async createPurchase(dto: CreatePurchaseDto, user: JwtPayload) {
-    return this.dataSource.transaction(async (manager) => {
+    const purchase = await this.dataSource.transaction(async (manager) => {
       const paymentMethod = await manager.findOne(PaymentMethod, {
         where: { id: dto.paymentMethodId },
       });
@@ -57,6 +59,7 @@ export class PurchaseService {
       // 1️⃣ Crear Purchase
       const purchase = manager.create(Purchase, {
         shopId: dto.shopId,
+        employeeId: user.id,
         supplier: dto.supplierId ? { id: dto.supplierId } : null,
         paymentMethod,
         purchaseDate: dto.purchaseDate ?? new Date(),
@@ -131,20 +134,6 @@ export class PurchaseService {
           'Debes tener una caja abierta para registrar una compra',
         );
       }
-      if (paymentMethod.createsCashMovement) {
-        const movement = manager.create(CashMovement, {
-          cashRegisterId: cashRegister.id, // ✅ CLAVE
-          shopId: dto.shopId,
-          type: CashMovementType.EXPENSE,
-          amount: totalAmount,
-          userId: user.id,
-          description: `Compra ${purchase.id}`,
-          purchaseId: purchase.id, // ✅ como en expenses/incomes
-        });
-
-        await manager.save(movement);
-      }
-
       return {
         id: purchase.id,
         shopId: purchase.shopId,
@@ -153,8 +142,29 @@ export class PurchaseService {
         totalAmount: purchase.totalAmount,
         purchaseDate: purchase.purchaseDate,
         status: purchase.status,
+        cashRegisterId: cashRegister.id,
+        createsCashMovement: paymentMethod.createsCashMovement,
       };
     });
+
+    this.realtimeGateway.emitToShop(
+      dto.shopId,
+      RealtimeEvents.PURCHASE_CREATED,
+    );
+
+    if (purchase.createsCashMovement) {
+      await this.cashMovementService.create({
+        cashRegisterId: purchase.cashRegisterId,
+        shopId: dto.shopId,
+        type: CashMovementType.PURCHASE,
+        amount: purchase.totalAmount,
+        userId: user.id,
+        description: `Compra ${purchase.id}`,
+        purchaseId: purchase.id,
+      });
+    }
+
+    return purchase;
   }
 
   async getAll(
@@ -170,12 +180,16 @@ export class PurchaseService {
     const page = filters.page ?? 1;
     const limit = filters.limit ?? 20;
 
-    const where: any = {};
+    if (!filters.shopId) {
+      throw new BadRequestException('shopId es requerido');
+    }
+
+    const where: FindOptionsWhere<Purchase> = {
+      shopId: filters.shopId,
+    };
 
     if (user.role === 'EMPLOYEE') {
-      where.createdBy = user.id;
-    } else if (filters.shopId) {
-      where.shopId = filters.shopId;
+      where.employeeId = user.id;
     }
 
     if (filters.fromDate && filters.toDate) {
@@ -230,7 +244,7 @@ export class PurchaseService {
   }
 
   async update(id: string, dto: UpdatePurchaseDto, user: JwtPayload) {
-    return this.dataSource.transaction(async (manager) => {
+    const result = await this.dataSource.transaction(async (manager) => {
       const purchase = await manager.findOne(Purchase, {
         where: { id },
       });
@@ -331,17 +345,26 @@ export class PurchaseService {
 
       await manager.save(purchase);
 
-      // 💰 4️⃣ Sync cash movement
-      if (cashMovement.amount !== totalAmount) {
-        cashMovement.amount = totalAmount;
-        await manager.save(cashMovement);
-      }
+    // 💰 4️⃣ Sync cash movement
+    if (cashMovement.amount !== totalAmount) {
+      cashMovement.amount = totalAmount;
+      await manager.save(cashMovement);
+    }
 
-      return {
-        message: 'Compra actualizada correctamente',
-        purchaseId: purchase.id,
-      };
-    });
+    return {
+      message: 'Compra actualizada correctamente',
+      purchaseId: purchase.id,
+      shopId: purchase.shopId,
+    };
+  });
+
+  this.realtimeGateway.emitToShop(
+    result.shopId,
+    RealtimeEvents.PURCHASE_UPDATED,
+    { purchaseId: result.purchaseId, shopId: result.shopId },
+  );
+
+  return result;
   }
 
   async cancelPurchase(
@@ -349,7 +372,7 @@ export class PurchaseService {
     dto: CancelPurchaseDto,
     user: JwtPayload,
   ) {
-    return this.dataSource.transaction(async (manager) => {
+    const result = await this.dataSource.transaction(async (manager) => {
       const purchase = await manager.findOne(Purchase, {
         where: { id: purchaseId },
         relations: {
@@ -421,20 +444,29 @@ export class PurchaseService {
         );
       }
 
-      // 🧾 2️⃣ Marcar compra como cancelada
-      purchase.status = PurchaseStatus.CANCELLED;
-      purchase.cancelledAt = new Date();
-      purchase.cancelledBy = user.id;
-      purchase.cancellationReason = dto.reason;
+    // 🧾 2️⃣ Marcar compra como cancelada
+    purchase.status = PurchaseStatus.CANCELLED;
+    purchase.cancelledAt = new Date();
+    purchase.cancelledBy = user.id;
+    purchase.cancellationReason = dto.reason;
 
-      await manager.save(purchase);
+    await manager.save(purchase);
 
-      // 🚫 3️⃣ NO tocar cash movement (queda como evidencia)
+    // 🚫 3️⃣ NO tocar cash movement (queda como evidencia)
 
-      return {
-        message: 'Compra cancelada correctamente',
-        purchaseId: purchase.id,
-      };
-    });
+    return {
+      message: 'Compra cancelada correctamente',
+      purchaseId: purchase.id,
+      shopId: purchase.shopId,
+    };
+  });
+
+  this.realtimeGateway.emitToShop(
+    result.shopId,
+    RealtimeEvents.PURCHASE_CANCELLED,
+    { purchaseId: result.purchaseId, shopId: result.shopId },
+  );
+
+  return result;
   }
 }

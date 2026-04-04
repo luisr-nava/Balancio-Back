@@ -19,6 +19,12 @@ import { PurchaseItem } from '@/purchase/entities/purchase-item.entity';
 import { PurchaseReturnItem } from '@/purchase-return/entities/purchase-return-item.entity';
 import { ReplacementItem } from '@/purchase-return/entities/replacement-item.entity';
 import { PromotionItem } from '@/promotion/entities/promotion-item.entity';
+import { SaleItem } from '@/sale/entities/sale-item.entity';
+import {
+  ProductRealtimePayload,
+  RealtimeEvents,
+  RealtimeGateway,
+} from '@/realtime/realtime.gateway';
 type DeleteScope = 'ONE' | 'MULTIPLE' | 'ALL';
 const BULK_DELETE_BATCH_SIZE = 5;
 
@@ -54,6 +60,11 @@ export class ProductService {
 
     @InjectRepository(PromotionItem)
     private readonly promotionItemRepository: Repository<PromotionItem>,
+
+    @InjectRepository(SaleItem)
+    private readonly saleItemRepository: Repository<SaleItem>,
+
+    private readonly realtimeGateway: RealtimeGateway,
   ) {}
   async create(
     dto: CreateProductDto,
@@ -67,24 +78,60 @@ export class ProductService {
 
     let uploadedImage: { url: string; publicId: string } | undefined;
     try {
-      const measurementUnitExists = await queryRunner.manager.exists(
-        MeasurementUnit,
-        { where: { id: dto.measurementUnitId } },
-      );
+      const firstShopId = dto.shops[0]?.shopId;
 
-      if (!measurementUnitExists) {
-        throw new ConflictException('La unidad de medida no existe');
+      if (!firstShopId) {
+        throw new ConflictException('Debe especificar al menos una tienda');
       }
 
-      const product = queryRunner.manager.create(Product, {
-        name: dto.name,
-        description: dto.description,
-        barcode: dto.barcode || null,
-        measurementUnitId: dto.measurementUnitId,
-        allowPriceOverride: dto.allowPriceOverride ?? false,
+      const requestedBarcode = dto.barcode?.trim();
+      const barcode =
+        requestedBarcode ||
+        (await this.resolveBarcodeForShop(queryRunner, firstShopId));
+      const normalizedBarcode = barcode.trim().toLowerCase();
+      let savedProduct = await queryRunner.manager.findOne(Product, {
+        where: { barcode: normalizedBarcode },
       });
 
-      const savedProduct = await queryRunner.manager.save(Product, product);
+      if (savedProduct && !savedProduct.barcode) {
+        savedProduct.barcode = normalizedBarcode;
+        savedProduct = await queryRunner.manager.save(Product, savedProduct);
+      }
+
+      if (!savedProduct) {
+        const measurementUnitExists = await queryRunner.manager.exists(
+          MeasurementUnit,
+          { where: { id: dto.measurementUnitId } },
+        );
+
+        if (!measurementUnitExists) {
+          throw new ConflictException('La unidad de medida no existe');
+        }
+
+        const product = queryRunner.manager.create(Product, {
+          name: dto.name,
+          description: dto.description,
+          barcode: normalizedBarcode,
+          measurementUnitId: dto.measurementUnitId,
+          allowPriceOverride: dto.allowPriceOverride ?? false,
+        });
+
+        try {
+          savedProduct = await queryRunner.manager.save(Product, product);
+        } catch (error) {
+          if (!this.isDuplicateKeyError(error)) {
+            throw error;
+          }
+
+          savedProduct = await queryRunner.manager.findOne(Product, {
+            where: { barcode: normalizedBarcode },
+          });
+
+          if (!savedProduct) {
+            throw error;
+          }
+        }
+      }
 
       const shopIds = dto.shops.map((s) => s.shopId);
 
@@ -110,10 +157,25 @@ export class ProductService {
           throw new ConflictException('Moneda de la tienda no encontrada');
         }
 
+        const existingShopProduct = await queryRunner.manager.findOne(
+          ShopProduct,
+          {
+            where: {
+              shopId: shop.shopId,
+              barcode: normalizedBarcode,
+              deletedAt: IsNull(),
+            },
+          },
+        );
+
+        if (existingShopProduct) {
+          throw new ConflictException('Barcode already exists in this shop');
+        }
+
         const shopProduct = queryRunner.manager.create(ShopProduct, {
           productId: savedProduct.id,
           shopId: shop.shopId,
-          barcode: dto.barcode,
+          barcode: normalizedBarcode,
           categoryId: shop.categoryId ?? null,
           supplierId: shop.supplierId ?? null,
           costPrice: shop.costPrice,
@@ -153,6 +215,18 @@ export class ProductService {
       }
       await queryRunner.commitTransaction();
 
+      for (const shopProduct of shopProducts) {
+        this.realtimeGateway.emitToShop<ProductRealtimePayload>(
+          shopProduct.shopId,
+          RealtimeEvents.PRODUCT_CREATED,
+          {
+            productId: savedProduct.id,
+            shopId: shopProduct.shopId,
+            shopProductId: shopProduct.id,
+          },
+        );
+      }
+
       return {
         message: 'Producto creado correctamente',
         product: {
@@ -184,7 +258,12 @@ export class ProductService {
     sortByStock?: 'ASC' | 'DESC',
     sortByPrice?: 'ASC' | 'DESC',
   ) {
+    const where = shopId
+      ? { shopProducts: { shopId, deletedAt: IsNull() } }
+      : { shopProducts: { deletedAt: IsNull() } };
+
     const products = await this.productRepository.find({
+      where,
       relations: {
         measurementUnit: true,
         shopProducts: {
@@ -215,11 +294,13 @@ export class ProductService {
       );
     }
 
-    let transformed = filteredProducts
+    const transformed = filteredProducts
       .map((product) => {
         let shopProducts = shopId
           ? product.shopProducts.filter((sp) => sp.shopId === shopId)
           : product.shopProducts;
+
+        shopProducts = shopProducts.filter((sp) => !sp.deletedAt);
 
         // Siempre solo stock disponible
         shopProducts = shopProducts.filter((sp) => sp.stock! > 0);
@@ -332,7 +413,8 @@ export class ProductService {
       Object.assign(product, {
         name: dto.name ?? product.name,
         description: dto.description ?? product.description,
-        barcode: dto.barcode !== undefined ? (dto.barcode || null) : product.barcode,
+        barcode:
+          dto.barcode !== undefined ? dto.barcode || null : product.barcode,
         measurementUnitId: dto.measurementUnitId ?? product.measurementUnitId,
       });
 
@@ -387,17 +469,29 @@ export class ProductService {
         await queryRunner.manager.save(Product, product);
       }
 
-      await queryRunner.commitTransaction();
+    await queryRunner.commitTransaction();
 
-      // 🔥 BORRAR IMAGEN ANTERIOR SOLO DESPUÉS DEL COMMIT
-      if (file && previousImagePublicId) {
-        await CloudinaryService.deleteImage(previousImagePublicId);
-      }
+    for (const shopDto of dto.shops) {
+      this.realtimeGateway.emitToShop<ProductRealtimePayload>(
+        shopDto.shopId,
+        RealtimeEvents.PRODUCT_UPDATED,
+        {
+          productId,
+          shopId: shopDto.shopId,
+          shopProductId: '',
+        },
+      );
+    }
 
-      return {
-        message: 'Producto actualizado correctamente',
-        affectedShops: dto.shops.map((s) => s.shopId),
-      };
+    // 🔥 BORRAR IMAGEN ANTERIOR SOLO DESPUÉS DEL COMMIT
+    if (file && previousImagePublicId) {
+      await CloudinaryService.deleteImage(previousImagePublicId);
+    }
+
+    return {
+      message: 'Producto actualizado correctamente',
+      affectedShops: dto.shops.map((s) => s.shopId),
+    };
     } catch (error) {
       await queryRunner.rollbackTransaction();
 
@@ -418,7 +512,9 @@ export class ProductService {
       return { deleted: [], deactivated: [], notFound: [], failed: [] };
     }
     if (productIds.length > 100) {
-      throw new ConflictException('No se pueden eliminar más de 100 productos a la vez');
+      throw new ConflictException(
+        'No se pueden eliminar más de 100 productos a la vez',
+      );
     }
     const uniqueIds = [...new Set(productIds)];
 
@@ -428,7 +524,7 @@ export class ProductService {
       select: {
         id: true,
         imagePublicId: true,
-        shopProducts: { id: true, shopId: true },  // Fix 1 — needs shopId for tenant filter
+        shopProducts: { id: true, shopId: true }, // Fix 1 — needs shopId for tenant filter
       },
     });
 
@@ -457,8 +553,21 @@ export class ProductService {
               ),
             );
 
+            for (const shopProduct of shopProductsToProcess) {
+              this.realtimeGateway.emitToShop<ProductRealtimePayload>(
+                shopProduct.shopId,
+                RealtimeEvents.PRODUCT_DELETED,
+                {
+                  productId: product.id,
+                  shopId: shopProduct.shopId,
+                  shopProductId: shopProduct.id,
+                },
+              );
+            }
+
             const remaining = await this.shopProductRepository.count({
               where: { productId: product.id },
+              withDeleted: true,
             });
 
             if (remaining === 0) {
@@ -468,15 +577,18 @@ export class ProductService {
 
               // Fix 3 — Cloudinary after DB delete, non-blocking
               if (product.imagePublicId) {
-                CloudinaryService.deleteImage(product.imagePublicId).catch((err) =>
-                  this.logger.warn(
-                    `Failed to delete Cloudinary image ${product.imagePublicId}: ${err?.message}`,
-                  ),
+                CloudinaryService.deleteImage(product.imagePublicId).catch(
+                  (err) =>
+                    this.logger.warn(
+                      `Failed to delete Cloudinary image ${product.imagePublicId}: ${err?.message}`,
+                    ),
                 );
               }
             } else {
               deactivated.push(product.id);
-              this.logger.debug(`Product ${product.id} deactivated (${remaining} ShopProduct(s) remain)`);
+              this.logger.debug(
+                `Product ${product.id} deactivated (${remaining} ShopProduct(s) remain)`,
+              );
             }
           } catch (err) {
             const reason = err instanceof Error ? err.message : String(err);
@@ -530,15 +642,30 @@ export class ProductService {
       }
 
       // 🔥 Verificamos si quedan shopProducts
-      const remaining = await queryRunner.manager.count(ShopProduct, {
-        where: { productId },
-      });
+      const remaining = await queryRunner.manager
+        .getRepository(ShopProduct)
+        .count({
+          where: { productId },
+          withDeleted: true,
+        });
 
       if (remaining === 0) {
         await queryRunner.manager.delete(Product, productId);
       }
 
       await queryRunner.commitTransaction();
+
+      for (const shopProduct of shopProducts) {
+        this.realtimeGateway.emitToShop<ProductRealtimePayload>(
+          shopProduct.shopId,
+          RealtimeEvents.PRODUCT_DELETED,
+          {
+            productId,
+            shopId: shopProduct.shopId,
+            shopProductId: shopProduct.id,
+          },
+        );
+      }
 
       // 🔥 Si no quedan tiendas y había imagen → borrarla
       if (remaining === 0 && imagePublicId) {
@@ -578,11 +705,13 @@ export class ProductService {
     baseBarcode?: string,
   ): Promise<string> {
     if (baseBarcode) {
-      const exists = await queryRunner.manager.exists(ShopProduct, {
-        where: { shopId, barcode: baseBarcode },
-      });
+      const exists = await queryRunner.manager
+        .getRepository(ShopProduct)
+        .count({
+          where: { shopId, barcode: baseBarcode, deletedAt: IsNull() },
+        });
 
-      if (!exists) {
+      if (exists === 0) {
         return baseBarcode;
       }
     }
@@ -590,16 +719,33 @@ export class ProductService {
     for (let i = 0; i < 5; i++) {
       const generated = await this.generateInternalBarcode(queryRunner, shopId);
 
-      const exists = await queryRunner.manager.exists(ShopProduct, {
-        where: { shopId, barcode: generated },
-      });
+      const exists = await queryRunner.manager
+        .getRepository(ShopProduct)
+        .count({
+          where: { shopId, barcode: generated, deletedAt: IsNull() },
+        });
 
-      if (!exists) {
+      if (exists === 0) {
         return generated;
       }
     }
 
     throw new ConflictException('No se pudo asignar un código de barras único');
+  }
+
+  private isDuplicateKeyError(error: unknown): boolean {
+    const code =
+      typeof error === 'object' && error !== null && 'code' in error
+        ? String(error.code)
+        : '';
+    const message =
+      error instanceof Error
+        ? error.message
+        : typeof error === 'object' && error !== null && 'message' in error
+          ? String(error.message)
+          : '';
+
+    return code === '23505' || message.toLowerCase().includes('duplicate');
   }
 
   private async hasHistory(shopProductId: string): Promise<boolean> {
@@ -641,11 +787,8 @@ export class ProductService {
   }
 
   private async hasSales(shopProductId: string): Promise<boolean> {
-    return this.productHistoryRepository.exist({
-      where: {
-        shopProduct: { id: shopProductId },
-        changeType: ProductHistoryChangeType.SALE,
-      },
+    return this.saleItemRepository.exist({
+      where: { shopProductId },
     });
   }
   private async hasMeaningfulHistory(shopProductId: string): Promise<boolean> {
@@ -688,36 +831,35 @@ export class ProductService {
 
     if (!shopProduct) return;
 
-    const [hasSales, hasPurchases, hasPurchaseReturns, hasReplacements, hasPromotions] =
-      await Promise.all([
-        this.hasSales(shopProductId),
-        this.hasPurchases(shopProductId),
-        this.hasPurchaseReturns(shopProductId),
-        this.hasReplacementItems(shopProductId),
-        this.hasPromotionItems(shopProductId),
-      ]);
-
-    if (hasSales || hasPurchases || hasPurchaseReturns || hasReplacements || hasPromotions) {
-      if (!shopProduct.isActive) return;
-
-      shopProduct.isActive = false;
-
-      await this.shopProductRepository.save(shopProduct);
-
-      await this.productHistoryRepository.save(
-        this.productHistoryRepository.create({
-          shopProductId,
-          userId: user.id,
-          changeType: ProductHistoryChangeType.DEACTIVATED,
-          note: 'Producto desactivado (ventas o compras asociadas)',
-        }),
-      );
-
-      return;
-    }
-    await this.productHistoryRepository.delete({
-      shopProduct: { id: shopProductId },
+    const hasSales = await this.saleItemRepository.exist({
+      where: { shopProductId },
     });
-    await this.shopProductRepository.delete(shopProductId);
+
+    if (shopProduct.isActive) {
+      shopProduct.isActive = false;
+      await this.shopProductRepository.save(shopProduct);
+    }
+
+    await this.productHistoryRepository.save(
+      this.productHistoryRepository.create({
+        shopProductId,
+        userId: user.id,
+        changeType: ProductHistoryChangeType.DEACTIVATED,
+        note: hasSales
+          ? 'Producto desactivado. No se puede eliminar porque tiene ventas asociadas.'
+          : 'Producto desactivado',
+      }),
+    );
+
+    await this.shopProductRepository.softDelete(shopProductId);
+  }
+
+  async restoreShopProduct(id: string) {
+    await this.shopProductRepository.restore(id);
+    await this.shopProductRepository.update(id, { isActive: true });
+
+    return this.shopProductRepository.findOne({
+      where: { id },
+    });
   }
 }

@@ -11,5 +11,4 @@ export class CloseCashRegisterDto {
   @IsOptional()
   @IsString()
   closingNotes?: string;
-
 }

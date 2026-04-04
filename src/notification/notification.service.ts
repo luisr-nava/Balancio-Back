@@ -3,10 +3,7 @@ import { CreateNotificationDto } from './dto/create-notification.dto';
 import { GetNotificationsQueryDto } from './dto/get-notifications-query.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, MoreThan, Repository } from 'typeorm';
-import {
-  Notification,
-  NotificationType,
-} from './entities/notification.entity';
+import { Notification, NotificationType } from './entities/notification.entity';
 import { UserNotificationPreference } from './entities/notification-preference.entity';
 import { NotificationGateway } from './notification.gateway';
 
@@ -22,6 +19,7 @@ export interface PaginatedNotifications {
 export interface UserPreference {
   type: NotificationType;
   enabled: boolean;
+  threshold?: number | null;
 }
 
 @Injectable()
@@ -76,6 +74,47 @@ export class NotificationService {
       }
     }
 
+    // Grouping: if groupKey is provided, try to aggregate with existing notification
+    if (data.groupKey) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const existing = await notificationRepo.findOne({
+        where: {
+          userId: data.userId,
+          groupKey: data.groupKey,
+          createdAt: MoreThan(today),
+        },
+      });
+
+      if (existing) {
+        // Aggregate: increment count and update metadata
+        const existingMetadata = (existing.metadata as Record<string, unknown>) ?? {};
+        const newMetadata = data.metadata ?? {};
+        const existingTotal = Number(existingMetadata.total) || 0;
+        const newAmount = Number(newMetadata.amount) || 0;
+
+        existing.count += 1;
+        existing.metadata = {
+          ...existingMetadata,
+          total: existingTotal + newAmount,
+        };
+
+        const saved = await notificationRepo.save(existing);
+
+        try {
+          this.notificationGateway.sendNotification(data.userId, saved);
+        } catch (err) {
+          this.logger.error(
+            `WebSocket emit failed for user ${data.userId}`,
+            err instanceof Error ? err.stack : err,
+          );
+        }
+
+        return saved;
+      }
+    }
+
     const notification = notificationRepo.create({
       userId: data.userId,
       shopId: data.shopId ?? null,
@@ -85,6 +124,7 @@ export class NotificationService {
       severity: data.severity,
       metadata: data.metadata ?? null,
       deduplicationKey: data.deduplicationKey ?? null,
+      groupKey: data.groupKey ?? null,
     });
 
     const saved = await notificationRepo.save(notification);
@@ -199,17 +239,20 @@ export class NotificationService {
   async getUserPreferences(userId: string): Promise<UserPreference[]> {
     const existing = await this.preferencesRepository.find({
       where: { userId },
-      select: { type: true, enabled: true },
+      select: { type: true, enabled: true, threshold: true },
     });
 
-    const map = new Map(existing.map((p) => [p.type, p.enabled]));
+    const map = new Map(
+      existing.map((p) => [p.type, { enabled: p.enabled, threshold: p.threshold }]),
+    );
     const allTypes = Object.values(NotificationType);
 
     // ?? true: if the user has no saved preference for a type, default to enabled.
     // This also correctly narrows the return type to boolean (not boolean | undefined).
     return allTypes.map((type) => ({
       type,
-      enabled: map.get(type) ?? true,
+      enabled: map.get(type)?.enabled ?? true,
+      threshold: map.get(type)?.threshold ?? null,
     }));
   }
 
@@ -227,14 +270,52 @@ export class NotificationService {
     userId: string,
     type: NotificationType,
     enabled: boolean,
+    threshold?: number | null,
   ): Promise<UserPreference> {
-    await this.preferencesRepository.upsert(
-      { userId, type, enabled },
-      { conflictPaths: ['userId', 'type'], skipUpdateIfNoValuesChanged: true },
-    );
+    const data: { userId: string; type: NotificationType; enabled: boolean; threshold?: number | null } = {
+      userId,
+      type,
+      enabled,
+    };
+
+    if (threshold !== undefined) {
+      data.threshold = threshold;
+    }
+
+    await this.preferencesRepository.upsert(data, {
+      conflictPaths: ['userId', 'type'],
+      skipUpdateIfNoValuesChanged: true,
+    });
 
     // Return the canonical state after upsert
-    return { type, enabled };
+    return { type, enabled, threshold: threshold ?? null };
   }
 
+  async batchUpdateUserPreferences(
+    userId: string,
+    preferences: Array<{ type: NotificationType; enabled: boolean; threshold?: number | null }>,
+  ): Promise<UserPreference[]> {
+    const results: UserPreference[] = [];
+
+    for (const pref of preferences) {
+      const data: { userId: string; type: NotificationType; enabled: boolean; threshold?: number | null } = {
+        userId,
+        type: pref.type,
+        enabled: pref.enabled,
+      };
+
+      if (pref.threshold !== undefined) {
+        data.threshold = pref.threshold;
+      }
+
+      await this.preferencesRepository.upsert(data, {
+        conflictPaths: ['userId', 'type'],
+        skipUpdateIfNoValuesChanged: true,
+      });
+
+      results.push({ type: pref.type, enabled: pref.enabled, threshold: pref.threshold ?? null });
+    }
+
+    return results;
+  }
 }

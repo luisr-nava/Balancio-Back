@@ -83,7 +83,7 @@ export class CashRegisterController {
     @Param('shopId') shopId: string,
     @GetUser() user: JwtPayload,
   ) {
-    return this.cashRegisterService.getCurrentForUser(shopId, user.id);
+    return this.cashRegisterService.getCurrentForUser(shopId, user);
   }
 
   // MONITOREO EN TIEMPO REAL

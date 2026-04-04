@@ -118,6 +118,12 @@ export class MeasurementUnitService {
       throw new NotFoundException('Unidad de medida no encontrada');
     }
 
+    if (unit.isSystem) {
+      throw new BadRequestException(
+        'No se puede modificar una unidad del sistema',
+      );
+    }
+
     /** NAME **/
     if (dto.name !== undefined) {
       if (!dto.name.trim()) {
@@ -206,6 +212,12 @@ export class MeasurementUnitService {
 
     if (!unit) {
       throw new NotFoundException('Unidad de medida no encontrada');
+    }
+
+    if (unit.isSystem) {
+      throw new BadRequestException(
+        'No se puede eliminar una unidad del sistema',
+      );
     }
 
     if (unit.products.length > 0) {

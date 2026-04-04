@@ -23,6 +23,20 @@ export class SaleItem {
   @Column()
   shopProductId: string;
 
+  @Column({ name: 'product_name', type: 'varchar', nullable: false })
+  productName: string;
+
+  @Column({ type: 'varchar', nullable: false })
+  barcode: string;
+
+  @Column('decimal', {
+    name: 'sale_price',
+    precision: 12,
+    scale: 2,
+    nullable: false,
+  })
+  salePrice: number;
+
   @Column('decimal', { precision: 18, scale: 6 })
   quantity: string; // balanza friendly
 

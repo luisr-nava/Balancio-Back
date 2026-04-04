@@ -54,6 +54,9 @@ export class MeasurementUnit {
   @Column({ default: false })
   isDefault: boolean;
 
+  @Column({ default: false })
+  isSystem: boolean;
+
   @Column({ type: 'text', nullable: true })
   createdByUserId?: string | null;
 

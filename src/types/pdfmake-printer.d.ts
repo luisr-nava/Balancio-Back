@@ -1,5 +1,8 @@
 declare module 'pdfmake' {
-  import type { TDocumentDefinitions, TFontDictionary } from 'pdfmake/interfaces';
+  import type {
+    TDocumentDefinitions,
+    TFontDictionary,
+  } from 'pdfmake/interfaces';
   import type PDFKit from 'pdfkit';
 
   class PdfPrinter {

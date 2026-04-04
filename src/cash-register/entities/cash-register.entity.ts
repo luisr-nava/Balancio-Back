@@ -31,6 +31,7 @@ import { CashRegisterStatus } from '../enums/cash-register-status.enum';
 @Entity('cash_registers')
 @Index(['shopId', 'status'])
 @Index(['openedAt'])
+@Index(['shopId', 'employeeId', 'status'], { unique: true, where: '"status" = \'OPEN\'' })
 export class CashRegister {
   @PrimaryGeneratedColumn('uuid')
   id: string;

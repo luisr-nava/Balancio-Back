@@ -30,9 +30,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  *      Composite indexes cover the specific query patterns and make the old
  *      single-column ones redundant.
  */
-export class HardenNotificationsSchema1742348400000
-  implements MigrationInterface
-{
+export class HardenNotificationsSchema1742348400000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     // ────────────────────────────────────────────────────────────────────────
     // 1. Extend the type enum
@@ -191,8 +189,12 @@ export class HardenNotificationsSchema1742348400000
     // Drop stale indexes left from synchronize:true
     await queryRunner.query(`DROP INDEX IF EXISTS "IDX_notifications_userId"`);
     await queryRunner.query(`DROP INDEX IF EXISTS "IDX_notifications_read"`);
-    await queryRunner.query(`DROP INDEX IF EXISTS "IDX_notifications_createdAt"`);
-    await queryRunner.query(`DROP INDEX IF EXISTS "IDX_notifications_deduplicationKey"`);
+    await queryRunner.query(
+      `DROP INDEX IF EXISTS "IDX_notifications_createdAt"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX IF EXISTS "IDX_notifications_deduplicationKey"`,
+    );
 
     // (userId, createdAt) — default inbox query
     await queryRunner.query(`
@@ -228,11 +230,21 @@ export class HardenNotificationsSchema1742348400000
 
   public async down(queryRunner: QueryRunner): Promise<void> {
     // ── Reverse indexes ──────────────────────────────────────────────────────
-    await queryRunner.query(`DROP INDEX IF EXISTS "IDX_notifications_deduplicationKey"`);
-    await queryRunner.query(`DROP INDEX IF EXISTS "IDX_notifications_userId_shopId_createdAt"`);
-    await queryRunner.query(`DROP INDEX IF EXISTS "IDX_notifications_userId_type_createdAt"`);
-    await queryRunner.query(`DROP INDEX IF EXISTS "IDX_notifications_userId_isRead"`);
-    await queryRunner.query(`DROP INDEX IF EXISTS "IDX_notifications_userId_createdAt"`);
+    await queryRunner.query(
+      `DROP INDEX IF EXISTS "IDX_notifications_deduplicationKey"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX IF EXISTS "IDX_notifications_userId_shopId_createdAt"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX IF EXISTS "IDX_notifications_userId_type_createdAt"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX IF EXISTS "IDX_notifications_userId_isRead"`,
+    );
+    await queryRunner.query(
+      `DROP INDEX IF EXISTS "IDX_notifications_userId_createdAt"`,
+    );
 
     // ── Reverse shopId ───────────────────────────────────────────────────────
     await queryRunner.query(`

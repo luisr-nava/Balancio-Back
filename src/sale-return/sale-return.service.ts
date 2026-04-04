@@ -1,9 +1,10 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Between, DataSource, In } from 'typeorm';
+import { Between, DataSource, In, Repository } from 'typeorm';
 import { CreateSaleReturnDto } from './dto/create-sale-return.dto';
 import { SaleReturnItem } from './entities/sale-return-item.entity';
 import { SaleReturn, SaleReturnStatus } from './entities/sale-return.entity';
@@ -15,10 +16,16 @@ import {
   CashRegister,
 } from '@/cash-register/entities/cash-register.entity';
 import { JwtPayload } from 'jsonwebtoken';
+import { UserShop } from '@/auth/entities/user-shop.entity';
+import { InjectRepository } from '@nestjs/typeorm';
 
 @Injectable()
 export class SaleReturnService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    @InjectRepository(UserShop)
+    private readonly userShopRepo: Repository<UserShop>,
+  ) {}
 
   async create(dto: CreateSaleReturnDto, userId: string) {
     return this.dataSource.transaction(async (manager) => {
@@ -226,6 +233,16 @@ export class SaleReturnService {
 
     const where: any = {};
 
+    // 🔐 VALIDATE SHOP FILTER
+    if (filters.shopId) {
+      const userShop = await this.userShopRepo.findOne({
+        where: { userId: user.id, shopId: filters.shopId },
+      });
+      if (!userShop) {
+        throw new ForbiddenException('No tienes acceso a esta tienda');
+      }
+    }
+
     // 🔐 VISIBILIDAD POR ROL
 
     if (user.role === 'EMPLOYEE') {
@@ -233,11 +250,16 @@ export class SaleReturnService {
     }
 
     if (user.role === 'MANAGER') {
-      if (!user.shopIds || user.shopIds.length === 0) {
+      const userShops = await this.userShopRepo.find({
+        where: { userId: user.id },
+      });
+      const userShopIds = userShops.map((us) => us.shopId);
+
+      if (userShopIds.length === 0) {
         return { data: [], total: 0, page, limit };
       }
 
-      where.shopId = filters.shopId ? filters.shopId : In(user.shopIds);
+      where.shopId = filters.shopId ? filters.shopId : In(userShopIds);
     }
 
     if (user.role === 'OWNER') {

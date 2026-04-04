@@ -47,4 +47,14 @@ export class CreateNotificationDto {
   @IsOptional()
   @IsString()
   deduplicationKey?: string;
+
+  /**
+   * Grouping key (optional).
+   * If provided, the service will aggregate with existing notifications
+   * with the same key from the same day, incrementing count and updating
+   * metadata.total.
+   */
+  @IsOptional()
+  @IsString()
+  groupKey?: string;
 }

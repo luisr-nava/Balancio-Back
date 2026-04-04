@@ -12,6 +12,8 @@ import { PurchaseItem } from '@/purchase/entities/purchase-item.entity';
 import { PurchaseReturnItem } from '@/purchase-return/entities/purchase-return-item.entity';
 import { ReplacementItem } from '@/purchase-return/entities/replacement-item.entity';
 import { PromotionItem } from '@/promotion/entities/promotion-item.entity';
+import { SaleItem } from '@/sale/entities/sale-item.entity';
+import { RealtimeModule } from '@/realtime/realtime.module';
 
 @Module({
   imports: [
@@ -25,7 +27,9 @@ import { PromotionItem } from '@/promotion/entities/promotion-item.entity';
       PurchaseReturnItem,
       ReplacementItem,
       PromotionItem,
+      SaleItem,
     ]),
+    RealtimeModule,
   ],
   controllers: [ProductController],
   providers: [ProductService, ProductImportService],

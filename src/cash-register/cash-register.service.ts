@@ -9,7 +9,7 @@ import {
   CashMovementType,
   CashRegister,
 } from './entities/cash-register.entity';
-import { Between, FindOptionsWhere, In, Repository } from 'typeorm';
+import { Between, FindOptionsWhere, In, Repository, QueryFailedError } from 'typeorm';
 import { OpenCashRegisterDto } from './dto/open-cash-register.dto';
 import { CashRegisterStatus } from './enums/cash-register-status.enum';
 import { CloseCashRegisterDto } from './dto/close-cash-register.dto';
@@ -22,9 +22,11 @@ import {
   NotificationSeverity,
   NotificationType,
 } from '@/notification/entities/notification.entity';
+import { formatNotification } from '@/notification/notification-formatter';
 import { User, UserRole } from '@/auth/entities/user.entity';
 import { CashRegisterLivePayload } from './cash-register.gateway';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { RealtimeEvents, RealtimeGateway } from '@/realtime/realtime.gateway';
 
 export const CASH_REGISTER_CLOSED_EVENT = 'cash-register.closed';
 
@@ -51,71 +53,90 @@ export class CashRegisterService {
     private readonly shopService: ShopService,
     private readonly notificationService: NotificationService,
     private readonly eventEmitter: EventEmitter2,
+    private readonly realtimeGateway: RealtimeGateway,
   ) {}
   async open(dto: OpenCashRegisterDto, user: JwtPayload) {
-    // 1️⃣ Validar que el usuario no tenga otra caja abierta (en ESA tienda)
-    const existing = await this.repo.findOne({
-      where: {
+    try {
+      return await this.repo.manager.transaction(async (manager) => {
+        const existing = await manager.findOne(CashRegister, {
+          where: {
+            shopId: dto.shopId,
+            employeeId: user.id,
+            status: CashRegisterStatus.OPEN,
+          },
+          lock: { mode: 'pessimistic_write' },
+        });
+
+        if (existing) {
+          throw new BadRequestException(
+            'Ya tienes una caja abierta en esta tienda',
+          );
+        }
+
+        const cashRegister = manager.create(CashRegister, {
+          shopId: dto.shopId,
+          employeeId: user.id,
+          openingAmount: dto.openingAmount.toFixed(2),
+          openedByUserId: user.id,
+          openedByName: user.fullName,
+          status: CashRegisterStatus.OPEN,
+        });
+
+        await manager.save(cashRegister);
+
+      await this.cashMovementService.create({
+        cashRegisterId: cashRegister.id,
         shopId: dto.shopId,
-        employeeId: user.id,
-        status: CashRegisterStatus.OPEN,
-      },
-    });
-
-    if (existing) {
-      throw new BadRequestException(
-        'Ya tienes una caja abierta en esta tienda',
-      );
-    }
-
-    // 2️⃣ Crear la caja
-    const cashRegister = await this.repo.save(
-      this.repo.create({
-        shopId: dto.shopId,
-        employeeId: user.id,
-        openingAmount: dto.openingAmount.toFixed(2),
-        openedByUserId: user.id,
-        openedByName: user.fullName,
-        status: CashRegisterStatus.OPEN,
-      }),
-    );
-
-    // 3️⃣ Crear movimiento OPENING
-    await this.cashMovementService.create({
-      cashRegisterId: cashRegister.id,
-      shopId: dto.shopId,
-      type: CashMovementType.OPENING,
-      amount: dto.openingAmount,
-      userId: user.id,
-      description: 'Apertura de caja',
-    });
-
-    // 4️⃣ Notificar a OWNER y MANAGER de la tienda
-    const shopUsers = await this.repo.manager.find(User, {
-      relations: { userShops: true },
-      where: { userShops: { shopId: dto.shopId } },
-    });
-
-    const recipients = shopUsers.filter((u) =>
-      [UserRole.OWNER, UserRole.MANAGER].includes(u.role),
-    );
-
-    for (const recipient of recipients) {
-      await this.notificationService.createNotification({
-        userId: recipient.id,
-        shopId: dto.shopId,
-        type: NotificationType.CASH_OPENED,
-        title: 'Caja abierta',
-        message: `Caja abierta por ${user.fullName} con $${dto.openingAmount}`,
-        severity: NotificationSeverity.INFO,
-        metadata: { openingAmount: dto.openingAmount, openedBy: user.fullName },
+        type: CashMovementType.OPENING,
+        amount: dto.openingAmount,
+        userId: user.id,
+        description: 'Apertura de caja',
       });
-    }
 
-    return {
-      ...cashRegister,
-      message: 'Caja abierta correctamente',
-    };
+      // 4️⃣ Notificar a OWNER y MANAGER de la tienda
+      const shopUsers = await manager.find(User, {
+        where: { userShops: { shopId: dto.shopId } },
+      });
+
+      const recipients = shopUsers.filter((u) =>
+        [UserRole.OWNER, UserRole.MANAGER].includes(u.role),
+      );
+
+      for (const recipient of recipients) {
+        const metadata = {
+          openingAmount: dto.openingAmount,
+          openedBy: user.fullName,
+        };
+        const { title, message } = formatNotification(
+          NotificationType.CASH_OPENED,
+          metadata,
+        );
+        await this.notificationService.createNotification({
+          userId: recipient.id,
+          shopId: dto.shopId,
+          type: NotificationType.CASH_OPENED,
+          title,
+          message,
+          severity: NotificationSeverity.INFO,
+          metadata,
+        });
+      }
+
+        return {
+          ...cashRegister,
+          message: 'Caja abierta correctamente',
+        };
+      });
+    } catch (error) {
+      if (error instanceof QueryFailedError) {
+        if (error.message.includes('unique') || error.message.includes('duplicate')) {
+          throw new BadRequestException(
+            'Ya tienes una caja abierta en esta tienda',
+          );
+        }
+      }
+      throw error;
+    }
   }
 
   async close(shopId: string, dto: CloseCashRegisterDto, user: JwtPayload) {
@@ -194,25 +215,28 @@ export class CashRegisterService {
       [UserRole.OWNER, UserRole.MANAGER].includes(u.role),
     );
 
-    for (const recipient of recipients) {
-      const isOwner = recipient.role === UserRole.OWNER;
-
-      await this.notificationService.createNotification({
-        userId: recipient.id,
-        shopId,
-        type: NotificationType.CASH_CLOSED,
-        title: 'Caja cerrada',
-        message: isOwner
-          ? `Caja cerrada por ${user.fullName} - Total $${expectedAmount}. Puede descargar el reporte desde el panel.`
-          : `Caja cerrada por ${user.fullName} - Total $${expectedAmount}`,
-        severity: NotificationSeverity.INFO,
-        metadata: {
+      for (const recipient of recipients) {
+        const metadata = {
           expectedAmount,
           closedBy: user.fullName,
           cashRegisterId: cashRegister.id,
-        },
-      });
-    }
+        };
+        const { title, message } = formatNotification(
+          NotificationType.CASH_CLOSED,
+          metadata,
+        );
+        await this.notificationService.createNotification({
+          userId: recipient.id,
+          shopId,
+          type: NotificationType.CASH_CLOSED,
+          title,
+          message,
+          severity: NotificationSeverity.INFO,
+          metadata,
+        });
+      }
+
+    this.realtimeGateway.emitToShop(shopId, RealtimeEvents.CASH_CLOSED);
 
     return {
       message: 'Caja cerrada correctamente',
@@ -250,6 +274,10 @@ export class CashRegisterService {
 
     // 3️⃣ Filtros
     if (filters.shopId) {
+      if (!shopIds.includes(filters.shopId)) {
+        throw new ForbiddenException('No tienes acceso a esta tienda');
+      }
+
       where.shopId = filters.shopId;
     }
 
@@ -362,13 +390,20 @@ export class CashRegisterService {
     };
   }
 
-  async getCurrentForUser(shopId: string, userId: string) {
+  async getCurrentForUser(shopId: string, user: JwtPayload | string) {
+    const where: FindOptionsWhere<CashRegister> = {
+      shopId,
+      status: CashRegisterStatus.OPEN,
+    };
+
+    if (typeof user === 'string') {
+      where.employeeId = user;
+    } else {
+      where.employeeId = user.id;
+    }
+
     return this.repo.findOne({
-      where: {
-        shopId,
-        employeeId: userId,
-        status: CashRegisterStatus.OPEN,
-      },
+      where,
       order: {
         openedAt: 'DESC',
       },

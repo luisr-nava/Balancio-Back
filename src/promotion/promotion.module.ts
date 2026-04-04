@@ -10,6 +10,7 @@ import { PromotionListener } from './listeners/promotion.listener';
 import { UserShop } from '@/auth/entities/user-shop.entity';
 import { User } from '@/auth/entities/user.entity';
 import { NotificationModule } from '@/notification/notification.module';
+import { RealtimeModule } from '@/realtime/realtime.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { NotificationModule } from '@/notification/notification.module';
       User,
     ]),
     NotificationModule,
+    RealtimeModule,
   ],
   controllers: [PromotionController],
   providers: [PromotionService, PromotionListener],

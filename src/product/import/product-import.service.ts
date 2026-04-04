@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, In, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import { JwtPayload } from 'jsonwebtoken';
 
 import { Product } from '../entities/product.entity';
@@ -50,10 +50,7 @@ function validateRow(row: RawImportRow): string[] {
     errs.push('costPrice inválido');
   if (row.salePrice === undefined || isNaN(row.salePrice) || row.salePrice < 0)
     errs.push('salePrice inválido');
-  if (
-    row.stock !== undefined &&
-    (isNaN(row.stock) || row.stock < 0)
-  )
+  if (row.stock !== undefined && (isNaN(row.stock) || row.stock < 0))
     errs.push('stock inválido');
   return errs;
 }
@@ -77,9 +74,7 @@ function groupRows(rows: RawImportRow[]): Map<string, GroupedEntry> {
     }
 
     const group = groups.get(key)!;
-    const duplicate = group.shopEntries.find(
-      (e) => e.shopId === row.shopId,
-    );
+    const duplicate = group.shopEntries.find((e) => e.shopId === row.shopId);
     if (!duplicate) {
       group.shopEntries.push({
         shopId: row.shopId!,
@@ -120,9 +115,7 @@ export class ProductImportService {
     }
 
     if (rawRows.length > MAX_ROWS) {
-      throw new BadRequestException(
-        `Máximo ${MAX_ROWS} filas por importación`,
-      );
+      throw new BadRequestException(`Máximo ${MAX_ROWS} filas por importación`);
     }
 
     const errors: Array<{ row: number; reason: string }> = [];
@@ -214,9 +207,7 @@ export class ProductImportService {
     const groupArray = [...groups.values()];
 
     // 7. Bulk lookup existing products (2 queries, not N)
-    const barcodes = groupArray
-      .filter((g) => g.barcode)
-      .map((g) => g.barcode!);
+    const barcodes = groupArray.filter((g) => g.barcode).map((g) => g.barcode!);
     const names = groupArray.filter((g) => !g.barcode).map((g) => g.name);
 
     const [byBarcode, byName] = await Promise.all([
@@ -227,7 +218,12 @@ export class ProductImportService {
             select: {
               id: true,
               barcode: true,
-              shopProducts: { id: true, shopId: true, stock: true },
+              shopProducts: {
+                id: true,
+                shopId: true,
+                barcode: true,
+                stock: true,
+              },
             },
           })
         : Promise.resolve([]),
@@ -238,16 +234,20 @@ export class ProductImportService {
             select: {
               id: true,
               name: true,
-              shopProducts: { id: true, shopId: true, stock: true },
+              barcode: true,
+              shopProducts: {
+                id: true,
+                shopId: true,
+                barcode: true,
+                stock: true,
+              },
             },
           })
         : Promise.resolve([]),
     ]);
 
     const barcodeMap = new Map(byBarcode.map((p) => [p.barcode!, p]));
-    const nameMap = new Map(
-      byName.map((p) => [normalizeName(p.name), p]),
-    );
+    const nameMap = new Map(byName.map((p) => [normalizeName(p.name), p]));
 
     // 8. Process in single transaction, batches of IMPORT_BATCH_SIZE
     let created = 0;
@@ -255,17 +255,20 @@ export class ProductImportService {
     const skipped = 0;
 
     await this.dataSource.transaction(async (manager) => {
-      for (
-        let i = 0;
-        i < groupArray.length;
-        i += IMPORT_BATCH_SIZE
-      ) {
+      for (let i = 0; i < groupArray.length; i += IMPORT_BATCH_SIZE) {
         const batch = groupArray.slice(i, i + IMPORT_BATCH_SIZE);
 
         for (const group of batch) {
           const existing = group.barcode
             ? barcodeMap.get(group.barcode)
             : nameMap.get(group.normalizedName);
+          const defaultBarcode =
+            group.barcode ??
+            existing?.barcode ??
+            (await this.resolveBarcodeForShop(
+              manager,
+              group.shopEntries[0].shopId,
+            ));
 
           if (existing) {
             // Product exists — upsert ShopProducts
@@ -277,6 +280,8 @@ export class ProductImportService {
               if (existingSP) {
                 // ShopProduct exists → update stock + prices
                 await manager.update(ShopProduct, existingSP.id, {
+                  barcode:
+                    group.barcode ?? existingSP.barcode ?? defaultBarcode,
                   costPrice: shopEntry.costPrice,
                   salePrice: shopEntry.salePrice,
                   stock: shopEntry.stock,
@@ -301,6 +306,7 @@ export class ProductImportService {
                   manager.create(ShopProduct, {
                     productId: existing.id,
                     shopId: shopEntry.shopId,
+                    barcode: defaultBarcode,
                     costPrice: shopEntry.costPrice,
                     salePrice: shopEntry.salePrice,
                     stock: shopEntry.stock,
@@ -328,7 +334,7 @@ export class ProductImportService {
               Product,
               manager.create(Product, {
                 name: group.name,
-                barcode: group.barcode,
+                barcode: defaultBarcode,
                 measurementUnitId: group.measurementUnitId,
                 allowPriceOverride: false,
               }),
@@ -341,6 +347,7 @@ export class ProductImportService {
                 manager.create(ShopProduct, {
                   productId: product.id,
                   shopId: shopEntry.shopId,
+                  barcode: defaultBarcode,
                   costPrice: shopEntry.costPrice,
                   salePrice: shopEntry.salePrice,
                   stock: shopEntry.stock,
@@ -367,5 +374,41 @@ export class ProductImportService {
     });
 
     return { created, updated, skipped, errors };
+  }
+
+  private async generateInternalBarcode(
+    manager: EntityManager,
+    shopId: string,
+  ): Promise<string> {
+    const last = await manager.findOne(ShopProduct, {
+      where: { shopId },
+      order: { createdAt: 'DESC' },
+      select: ['barcode'],
+    });
+
+    const lastNumber = last?.barcode ? Number(last.barcode.split('-')[1]) : 0;
+
+    return `BAL-${String(lastNumber + 1).padStart(8, '0')}`;
+  }
+
+  private async resolveBarcodeForShop(
+    manager: EntityManager,
+    shopId: string,
+  ): Promise<string> {
+    for (let i = 0; i < 5; i++) {
+      const generated = await this.generateInternalBarcode(manager, shopId);
+
+      const exists = await manager.exists(ShopProduct, {
+        where: { shopId, barcode: generated },
+      });
+
+      if (!exists) {
+        return generated;
+      }
+    }
+
+    throw new BadRequestException(
+      'No se pudo asignar un código de barras único',
+    );
   }
 }

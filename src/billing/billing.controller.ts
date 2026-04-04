@@ -7,6 +7,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+import { ThrottlerGuard, Throttle, SkipThrottle } from '@nestjs/throttler';
 import { BillingService } from './billing.service';
 import { GetUser } from '@/auth/decorators/get-user.decorators';
 import { JwtPayload } from 'jsonwebtoken';
@@ -26,6 +27,7 @@ export class BillingController {
     return this.billingService.getSubscriptionByOwner(user.id);
   }
 
+  @SkipThrottle()
   @Post('webhook')
   @HttpCode(200)
   handleStripeWebhook(@Req() req: RawBodyRequest) {

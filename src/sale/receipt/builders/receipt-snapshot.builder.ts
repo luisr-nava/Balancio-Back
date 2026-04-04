@@ -16,7 +16,7 @@ export class ReceiptSnapshotBuilder {
       saleId: sale.id,
       saleDate: sale.saleDate,
       items: sale.items.map((i) => ({
-        name: i.shopProduct.product.name,
+        name: i.productName ?? 'Producto eliminado',
         quantity: Number(i.quantity),
         unitPrice: Number(i.unitPrice),
         total: Number(i.total),

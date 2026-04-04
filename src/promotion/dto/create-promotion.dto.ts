@@ -14,7 +14,10 @@ import {
   ValidateIf,
   ValidateNested,
 } from 'class-validator';
-import { PromotionScopeType, PromotionType } from '../entities/promotion.entity';
+import {
+  PromotionScopeType,
+  PromotionType,
+} from '../entities/promotion.entity';
 import { BenefitType } from '../entities/promotion-benefit.entity';
 
 export class CreatePromotionItemDto {
@@ -31,7 +34,9 @@ export class CreatePromotionBenefitDto {
   type: BenefitType;
 
   /** Percentage (0-100) or fixed price. Omit for FREE_ITEM. */
-  @ValidateIf((o: CreatePromotionBenefitDto) => o.type !== BenefitType.FREE_ITEM)
+  @ValidateIf(
+    (o: CreatePromotionBenefitDto) => o.type !== BenefitType.FREE_ITEM,
+  )
   @IsNumber()
   @Min(0)
   value?: number;

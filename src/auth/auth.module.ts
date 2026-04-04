@@ -12,6 +12,8 @@ import { VerificationCodeCleanupJob } from '@/jobs/verification-code.cleanup.job
 import { JwtStrategy } from './strategies/jwt.strategies';
 import { BillingModule } from '@/billing/billing.module';
 import { NotificationModule } from '@/notification/notification.module';
+import { UserShop } from './entities/user-shop.entity';
+import { Shop } from '@/shop/entities/shop.entity';
 
 @Module({
   controllers: [AuthController],
@@ -21,7 +23,7 @@ import { NotificationModule } from '@/notification/notification.module';
     EmailModule,
     BillingModule,
     NotificationModule,
-    TypeOrmModule.forFeature([VerificationCode, User]),
+    TypeOrmModule.forFeature([VerificationCode, User, UserShop, Shop]),
     PassportModule.register({
       defaultStrategy: 'jwt',
     }),

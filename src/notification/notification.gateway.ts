@@ -8,6 +8,9 @@ import { ConfigService } from '@nestjs/config';
 import { Logger } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import * as jwt from 'jsonwebtoken';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { User } from '@/auth/entities/user.entity';
 import { Notification } from './entities/notification.entity';
 
 /**
@@ -85,7 +88,11 @@ export class NotificationGateway
 
   private readonly logger = new Logger(NotificationGateway.name);
 
-  constructor(private readonly configService: ConfigService) {}
+  constructor(
+    private readonly configService: ConfigService,
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
+  ) {}
 
   /**
    * Called by Socket.io for every new connection.
@@ -122,7 +129,9 @@ export class NotificationGateway
     } catch {
       // Expired or tampered token.
       // No log at error level — this is a normal client-side event (token expiry).
-      this.logger.warn(`Socket ${client.id} rejected: invalid or expired token`);
+      this.logger.warn(
+        `Socket ${client.id} rejected: invalid or expired token`,
+      );
       client.disconnect();
       return;
     }
@@ -130,6 +139,15 @@ export class NotificationGateway
     if (!userId) {
       this.logger.warn(
         `Socket ${client.id} rejected: token missing a valid UUID sub claim`,
+      );
+      client.disconnect();
+      return;
+    }
+
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user || !user.isActive) {
+      this.logger.warn(
+        `Socket ${client.id} rejected: user not found or inactive`,
       );
       client.disconnect();
       return;

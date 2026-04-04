@@ -37,12 +37,32 @@ import { SettingsModule } from './settings/settings.module';
 import { HealthModule } from './health/health.module';
 import { PromotionModule } from './promotion/promotion.module';
 import { CustomerAccountModule } from './customer-account/customer-account.module';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
+import { CustomThrottlerGuard } from './common/guards/custom-throttler.guard';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     EventEmitterModule.forRoot({ wildcard: false, global: true }),
     ScheduleModule.forRoot(),
+    ThrottlerModule.forRoot([
+      {
+        name: 'short',
+        ttl: 1000,
+        limit: 3,
+      },
+      {
+        name: 'medium',
+        ttl: 10000,
+        limit: 20,
+      },
+      {
+        name: 'long',
+        ttl: 60000,
+        limit: 100,
+      },
+    ]),
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
       useFactory: typeORMConfig,
@@ -81,8 +101,8 @@ import { CustomerAccountModule } from './customer-account/customer-account.modul
   ],
   controllers: [],
   providers: [
-    // Registers HttpExceptionFilter through DI so ErrorLogService can be injected.
     { provide: APP_FILTER, useClass: HttpExceptionFilter },
+    { provide: APP_GUARD, useClass: CustomThrottlerGuard },
   ],
 })
 export class AppModule {}

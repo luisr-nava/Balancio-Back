@@ -26,4 +26,3 @@ export class ShopProductStats {
   @Column({ type: 'numeric', default: 0 })
   totalAmount: number;
 }
-

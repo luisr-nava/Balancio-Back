@@ -61,10 +61,7 @@ export class NotificationController {
    * can mark it as read (throws 404 if the id doesn't belong to this user).
    */
   @Patch(':id/read')
-  markAsRead(
-    @Param('id', ParseUUIDPipe) id: string,
-    @GetUser() user: User,
-  ) {
+  markAsRead(@Param('id', ParseUUIDPipe) id: string, @GetUser() user: User) {
     return this.notificationService.markAsRead(id, user.id);
   }
 
@@ -85,6 +82,7 @@ export class NotificationController {
       user.id,
       type,
       dto.enabled,
+      dto.threshold,
     );
   }
 }

@@ -63,7 +63,7 @@ export class ProductCategoryController {
       user,
     );
   }
-  
+
   @UseGuards(JwtAuthGuard)
   @Delete(':id')
   remove(@Param('id') id: string, @GetUser() user: JwtPayload) {

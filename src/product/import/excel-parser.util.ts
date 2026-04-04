@@ -38,7 +38,9 @@ const STRING_FIELDS = new Set<keyof Omit<RawImportRow, 'rowNumber'>>([
   'measurementUnitId',
 ]);
 
-export async function parseExcelBuffer(buffer: Buffer): Promise<RawImportRow[]> {
+export async function parseExcelBuffer(
+  buffer: Buffer,
+): Promise<RawImportRow[]> {
   const workbook = new Workbook();
   const arrayBuffer = buffer.buffer.slice(
     buffer.byteOffset,
@@ -71,7 +73,8 @@ export async function parseExcelBuffer(buffer: Buffer): Promise<RawImportRow[]> 
       if (!field) return;
 
       const rawValue = cell.value;
-      if (rawValue === null || rawValue === undefined || rawValue === '') return;
+      if (rawValue === null || rawValue === undefined || rawValue === '')
+        return;
 
       hasData = true;
 

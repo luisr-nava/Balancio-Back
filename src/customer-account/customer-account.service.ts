@@ -4,7 +4,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, Repository, SelectQueryBuilder } from 'typeorm';
+import {
+  DataSource,
+  EntityManager,
+  Repository,
+  SelectQueryBuilder,
+} from 'typeorm';
 import {
   CustomerAccountMovement,
   CustomerAccountMovementType,
@@ -138,15 +143,25 @@ export class CustomerAccountService {
     page?: number;
     limit?: number;
   }) {
-    const { shopId, search, minDebt, maxDebt, isBlocked, debtStatus, page = 1, limit = 20 } = params;
+    const {
+      shopId,
+      search,
+      minDebt,
+      maxDebt,
+      isBlocked,
+      debtStatus,
+      page = 1,
+      limit = 20,
+    } = params;
 
     // Shared filter logic applied to any query builder
-    const applyFilters = (qb: SelectQueryBuilder<CustomerShop>): SelectQueryBuilder<CustomerShop> => {
+    const applyFilters = (
+      qb: SelectQueryBuilder<CustomerShop>,
+    ): SelectQueryBuilder<CustomerShop> => {
       if (search) {
-        qb.andWhere(
-          '(c.fullName ILIKE :search OR c.phone LIKE :search)',
-          { search: `%${search}%` },
-        );
+        qb.andWhere('(c.fullName ILIKE :search OR c.phone LIKE :search)', {
+          search: `%${search}%`,
+        });
       }
       if (minDebt !== undefined) {
         qb.andWhere('cs.currentDebt >= :minDebt', { minDebt });

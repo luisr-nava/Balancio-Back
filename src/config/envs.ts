@@ -37,7 +37,10 @@ const envVarsSchema = joi
       'string.min':
         'JWT_REFRESH_SECRET debe tener al menos 32 caracteres para ser seguro',
     }),
-    NODE_ENV: joi.string().valid('development', 'production', 'test').optional(),
+    NODE_ENV: joi
+      .string()
+      .valid('development', 'production', 'test')
+      .optional(),
     CLOUDINARY_CLOUD_NAME: joi.string().min(3).max(63).required(),
     CLOUDINARY_API_KEY: joi.string().min(3).max(63).required(),
     CLOUDINARY_API_SECRET: joi.string().min(3).max(63).required(),

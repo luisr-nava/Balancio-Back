@@ -18,7 +18,7 @@ export class ReceiptService {
     manager: EntityManager,
     sale: Sale,
     shop: Shop,
-    receiptNumber: number,
+    receiptNumber: number | bigint,
     paperSize?: ReceiptPaperSize,
   ): Promise<SaleReceipt> {
     const snapshot: ReceiptSnapshot = ReceiptSnapshotBuilder.build(sale, shop);

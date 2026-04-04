@@ -23,6 +23,7 @@ export class CreateSaleItemDto {
   quantity: string;
 
   @IsNumber()
+  @IsNotEmpty()
   unitPrice: number;
 
   @IsOptional()

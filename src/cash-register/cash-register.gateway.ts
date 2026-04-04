@@ -5,9 +5,13 @@ import {
   WebSocketServer,
 } from '@nestjs/websockets';
 import { ConfigService } from '@nestjs/config';
-import { Logger } from '@nestjs/common';
+import { Logger, Injectable } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import * as jwt from 'jsonwebtoken';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { UserShop } from '@/auth/entities/user-shop.entity';
+import { User } from '@/auth/entities/user.entity';
 
 /**
  * Payload emitted on every "cash-register.updated" event.
@@ -52,7 +56,13 @@ export class CashRegisterGateway
 
   private readonly logger = new Logger(CashRegisterGateway.name);
 
-  constructor(private readonly configService: ConfigService) {}
+  constructor(
+    private readonly configService: ConfigService,
+    @InjectRepository(UserShop)
+    private readonly userShopRepo: Repository<UserShop>,
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
+  ) {}
 
   async handleConnection(client: Socket): Promise<void> {
     const token = client.handshake.auth?.token as string | undefined;
@@ -66,12 +76,51 @@ export class CashRegisterGateway
       return;
     }
 
+    let userId: string | null = null;
+
     try {
       const secret = this.configService.getOrThrow<string>('JWT_SECRET');
-      jwt.verify(token, secret);
+      const raw = jwt.verify(token, secret);
+      if (
+        typeof raw === 'object' &&
+        raw !== null &&
+        'sub' in raw &&
+        typeof raw.sub === 'string'
+      ) {
+        userId = raw.sub;
+      }
     } catch {
       this.logger.warn(
         `[CashRegisterGateway] Socket ${client.id} rejected: invalid or expired token`,
+      );
+      client.disconnect();
+      return;
+    }
+
+    if (!userId) {
+      this.logger.warn(
+        `[CashRegisterGateway] Socket ${client.id} rejected: invalid token payload`,
+      );
+      client.disconnect();
+      return;
+    }
+
+    const user = await this.userRepo.findOne({ where: { id: userId } });
+    if (!user || !user.isActive) {
+      this.logger.warn(
+        `[CashRegisterGateway] Socket ${client.id} rejected: user not found or inactive`,
+      );
+      client.disconnect();
+      return;
+    }
+
+    const userShop = await this.userShopRepo.findOne({
+      where: { userId, shopId },
+    });
+
+    if (!userShop) {
+      this.logger.warn(
+        `[CashRegisterGateway] Socket ${client.id} rejected: no access to shop ${shopId}`,
       );
       client.disconnect();
       return;

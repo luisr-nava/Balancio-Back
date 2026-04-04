@@ -95,10 +95,7 @@ export class ProductController {
     }),
   )
   @Post('import')
-  async importProducts(
-    @UploadedFile() file: any,
-    @GetUser() user: JwtPayload,
-  ) {
+  async importProducts(@UploadedFile() file: any, @GetUser() user: JwtPayload) {
     if (!file) throw new BadRequestException('Archivo .xlsx requerido');
     return this.productImportService.importFromExcel(file.buffer, user);
   }

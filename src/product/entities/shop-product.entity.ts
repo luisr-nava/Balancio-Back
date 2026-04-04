@@ -4,8 +4,9 @@ import {
   Column,
   ManyToOne,
   OneToMany,
-  Unique,
+  Index,
   JoinColumn,
+  DeleteDateColumn,
 } from 'typeorm';
 import { Product } from './product.entity';
 import { Shop } from '@/shop/entities/shop.entity';
@@ -13,7 +14,14 @@ import { ProductHistory } from './product-history.entity';
 import { Supplier } from '@/supplier/entities/supplier.entity';
 
 @Entity()
-@Unique(['shopId', 'productId'])
+@Index('UQ_shop_product_active', ['shopId', 'productId'], {
+  unique: true,
+  where: '"deletedAt" IS NULL',
+})
+@Index('UQ_shop_barcode_active', ['shopId', 'barcode'], {
+  unique: true,
+  where: '"deletedAt" IS NULL',
+})
 export class ShopProduct {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -23,6 +31,9 @@ export class ShopProduct {
 
   @Column()
   productId: string;
+
+  @Column({ type: 'varchar', nullable: false })
+  barcode: string;
 
   @Column({ type: 'uuid', nullable: true })
   categoryId: string | null;
@@ -53,6 +64,9 @@ export class ShopProduct {
 
   @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   createdAt: Date;
+
+  @DeleteDateColumn()
+  deletedAt?: Date;
 
   @ManyToOne(() => Product, (product) => product.shopProducts)
   product: Product;

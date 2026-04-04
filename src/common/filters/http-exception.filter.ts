@@ -60,7 +60,12 @@ export class HttpExceptionFilter implements ExceptionFilter {
     }
 
     // Log 4xx only as warnings, skip 401/403 noise
-    if (statusCode >= 400 && statusCode < 500 && statusCode !== 401 && statusCode !== 403) {
+    if (
+      statusCode >= 400 &&
+      statusCode < 500 &&
+      statusCode !== 401 &&
+      statusCode !== 403
+    ) {
       this.logger.warn(
         `[${request.method}] ${request.url} → ${statusCode} — ${message}`,
       );
@@ -80,8 +85,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
         .createFromBackend({
           message:
             exception instanceof Error ? exception.message : String(exception),
-          stack:
-            exception instanceof Error ? (exception.stack ?? null) : null,
+          stack: exception instanceof Error ? (exception.stack ?? null) : null,
           path: request.url ?? '/',
           method: request.method ?? 'UNKNOWN',
           userId: user?.sub ?? null,

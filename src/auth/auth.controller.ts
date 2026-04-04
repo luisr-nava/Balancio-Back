@@ -7,10 +7,12 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   Req,
   Res,
   UnauthorizedException,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { AuthService } from './auth.service';
@@ -29,6 +31,7 @@ import { JwtPayload } from 'jsonwebtoken';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateUserRoleDto } from './dto/update-user-rol.dto';
 import { envs } from '@/config';
+import { PaginationInterceptor } from '@/common/interceptors/pagination.interceptor';
 
 const REFRESH_TOKEN_COOKIE = 'refreshToken';
 const REFRESH_TOKEN_COOKIE_OPTIONS = {
@@ -141,10 +144,24 @@ export class AuthController {
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseInterceptors(PaginationInterceptor)
   @Get('get-employees')
   @Roles(UserRole.OWNER, UserRole.MANAGER)
-  getEmployees(@GetUser() user: User) {
-    return this.authService.getEmployeesByOwner(user.id);
+  getEmployees(
+    @GetUser() user: User,
+    @Query('search') search?: string,
+    @Query('role') role?: UserRole,
+    @Query('shopId') shopId?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.authService.getEmployeesByOwner(user.ownerId ?? user.id, {
+      search,
+      role,
+      shopId,
+      page: Number(page ?? 1),
+      limit: Number(limit ?? 20),
+    });
   }
 
   @UseGuards(JwtAuthGuard)

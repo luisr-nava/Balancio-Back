@@ -31,6 +31,13 @@ export class UserNotificationPreference {
   @Column({ default: true })
   enabled: boolean;
 
+  /**
+   * Optional threshold for LOW_STOCK notifications.
+   * When set, the user is notified when stock falls below this value.
+   */
+  @Column({ type: 'int', nullable: true, default: null })
+  threshold: number | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

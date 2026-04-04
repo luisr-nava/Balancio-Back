@@ -184,16 +184,13 @@ export class ErrorLogService {
     if (filters.shopId) where.shopId = filters.shopId;
 
     if (filters.from && filters.to) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (where as any).createdAt = Between(
         new Date(filters.from),
         new Date(filters.to),
       );
     } else if (filters.from) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (where as any).createdAt = MoreThanOrEqual(new Date(filters.from));
     } else if (filters.to) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (where as any).createdAt = LessThanOrEqual(new Date(filters.to));
     }
 

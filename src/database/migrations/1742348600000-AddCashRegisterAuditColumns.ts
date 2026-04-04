@@ -17,9 +17,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * getLive() SELECTs and GROUP BYs cr."openedByName". Without this column
  * in the DB the query throws QueryFailedError → 500.
  */
-export class AddCashRegisterAuditColumns1742348600000
-  implements MigrationInterface
-{
+export class AddCashRegisterAuditColumns1742348600000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       ALTER TABLE "cash_registers"

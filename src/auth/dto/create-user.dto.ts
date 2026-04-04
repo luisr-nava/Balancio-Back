@@ -1,13 +1,16 @@
 import {
+  ArrayNotEmpty,
+  IsArray,
   IsBoolean,
   IsEmail,
   IsOptional,
   IsString,
+  IsUUID,
   Length,
-  MinLength,
   MaxLength,
-  IsNumber,
   IsDateString,
+  IsNumber,
+  MinLength,
 } from 'class-validator';
 import { UserRole } from '../entities/user.entity';
 
@@ -68,5 +71,9 @@ export class CreateUserDto {
   @IsString()
   emergencyContact?: string;
 
- 
+  @IsOptional()
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsUUID('all', { each: true })
+  shopIds?: string[];
 }

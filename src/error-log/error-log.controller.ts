@@ -8,6 +8,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { ThrottlerGuard, Throttle } from '@nestjs/throttler';
 import { ErrorLogService } from './error-log.service';
 import { CreateErrorLogDto } from './dto/create-error-log.dto';
 import { GetErrorLogsDto } from './dto/get-error-logs.dto';
@@ -17,17 +18,14 @@ import { Roles } from '@/auth/decorators/roles.decorator';
 import { UserRole } from '@/auth/entities/user.entity';
 
 @Controller('error-logs')
+@UseGuards(ThrottlerGuard)
 export class ErrorLogController {
   constructor(private readonly errorLogService: ErrorLogService) {}
 
-  /**
-   * Public — frontend sends error reports without authentication.
-   * TODO: add rate-limiting (@nestjs/throttler) before production.
-   */
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @Post()
   @HttpCode(HttpStatus.NO_CONTENT)
   async create(@Body() dto: CreateErrorLogDto): Promise<void> {
-    // Fire-and-forget — never let logging failures surface as API errors
     this.errorLogService.createFromDto(dto).catch(() => {});
   }
 

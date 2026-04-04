@@ -10,6 +10,7 @@ import {
 import { Shop } from '@/shop/entities/shop.entity';
 import { PaymentMethod } from '@/payment-method/entities/payment-method.entity';
 import { CashMovement } from '@/cash-movement/entities/cash-movement.entity';
+import { User } from '@/auth/entities/user.entity';
 
 @Entity()
 @Index(['paymentMethodId'])
@@ -22,6 +23,9 @@ export class Income {
 
   @Column()
   paymentMethodId: string;
+
+  @Column({ type: 'uuid', nullable: true })
+  employeeId?: string | null;
 
   @Column('float')
   amount: number;
@@ -44,6 +48,10 @@ export class Income {
 
   @ManyToOne(() => PaymentMethod)
   paymentMethod: PaymentMethod;
+
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'employeeId' })
+  employee?: User | null;
 
   @OneToOne(() => CashMovement, { nullable: true })
   @JoinColumn()

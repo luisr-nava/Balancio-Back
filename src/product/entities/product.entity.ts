@@ -4,6 +4,7 @@ import {
   Column,
   ManyToOne,
   OneToMany,
+  Index,
 } from 'typeorm';
 import { ProductCategory } from '../../product-category/entities/product-category.entity';
 import { Supplier } from '@/supplier/entities/supplier.entity';
@@ -11,6 +12,11 @@ import { MeasurementUnit } from '@/measurement-unit/entities/measurement-unit.en
 import { ShopProduct } from './shop-product.entity';
 
 @Entity()
+@Index('IDX_product_barcode', ['barcode'])
+@Index('UQ_product_barcode_not_null', ['barcode'], {
+  unique: true,
+  where: '"barcode" IS NOT NULL',
+})
 export class Product {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -21,7 +27,7 @@ export class Product {
   @Column({ type: 'text', nullable: true })
   description?: string | null;
 
-  @Column({ type: 'text', nullable: true, unique: true })
+  @Column({ type: 'varchar', nullable: true })
   barcode?: string | null;
 
   @Column()

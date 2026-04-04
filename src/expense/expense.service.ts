@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { CreateExpenseDto } from './dto/create-expense.dto';
 import { UpdateExpenseDto } from './dto/update-expense.dto';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -9,15 +9,19 @@ import { CashMovementType } from '@/cash-register/entities/cash-register.entity'
 import { JwtPayload } from 'jsonwebtoken';
 import { CashMovement } from '@/cash-movement/entities/cash-movement.entity';
 import { CashMovementService } from '@/cash-movement/cash-movement.service';
+import { RealtimeEvents, RealtimeGateway } from '@/realtime/realtime.gateway';
+import { UserShop } from '@/auth/entities/user-shop.entity';
 
 @Injectable()
 export class ExpenseService {
   constructor(
     @InjectRepository(Expense)
     private readonly expenseRepo: Repository<Expense>,
-
+    @InjectRepository(UserShop)
+    private readonly userShopRepo: Repository<UserShop>,
     private readonly cashRegisterService: CashRegisterService,
     private readonly cashMovementService: CashMovementService,
+    private readonly realtimeGateway: RealtimeGateway,
   ) {}
   async create(dto: CreateExpenseDto, user: JwtPayload) {
     // 1️⃣ Validar caja abierta DEL USUARIO
@@ -59,6 +63,12 @@ export class ExpenseService {
     // 4️⃣ Link inverso (opcional pero recomendado)
     expense.cashMovement = movement;
     await this.expenseRepo.save(expense);
+
+    this.realtimeGateway.emitToShop(
+      dto.shopId,
+      RealtimeEvents.EXPENSE_CREATED,
+      { expenseId: expense.id, shopId: dto.shopId },
+    );
 
     return { message: 'Egreso creado correctamente', expense: expense };
   }
@@ -125,6 +135,12 @@ export class ExpenseService {
 
     await this.expenseRepo.save(expense);
 
+    this.realtimeGateway.emitToShop(
+      expense.shopId,
+      RealtimeEvents.EXPENSE_UPDATED,
+      { expenseId: expense.id, shopId: expense.shopId },
+    );
+
     return {
       message: 'Egreso actualizado correctamente',
       expense,
@@ -150,6 +166,12 @@ export class ExpenseService {
 
     // 1️⃣ Filtro por tienda (obligatorio a nivel negocio)
     if (filters.shopId) {
+      const userShop = await this.userShopRepo.findOne({
+        where: { userId: user.id, shopId: filters.shopId },
+      });
+      if (!userShop) {
+        throw new ForbiddenException('No tienes acceso a esta tienda');
+      }
       where.shopId = filters.shopId;
     }
 
@@ -201,8 +223,16 @@ export class ExpenseService {
       throw new BadRequestException('Egreso no encontrado');
     }
 
-    if (expense.createdBy !== user.id) {
-      throw new BadRequestException(
+    const userShop = await this.userShopRepo.findOne({
+      where: { userId: user.id, shopId: expense.shopId },
+    });
+
+    if (!userShop) {
+      throw new ForbiddenException('No tienes acceso a esta tienda');
+    }
+
+    if (expense.createdBy !== user.id && userShop.role === 'EMPLOYEE') {
+      throw new ForbiddenException(
         'No tienes permiso para eliminar este egreso',
       );
     }
@@ -232,6 +262,12 @@ export class ExpenseService {
 
     // 🧹 3️⃣ borrar expense
     await this.expenseRepo.remove(expense);
+
+    this.realtimeGateway.emitToShop(
+      expense.shopId,
+      RealtimeEvents.EXPENSE_DELETED,
+      { expenseId: expense.id, shopId: expense.shopId },
+    );
 
     return { message: 'Egreso eliminado correctamente' };
   }

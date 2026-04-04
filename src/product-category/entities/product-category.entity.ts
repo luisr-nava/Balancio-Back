@@ -18,6 +18,9 @@ export class ProductCategory {
   @Column()
   name: string;
 
+  @Column({ default: false })
+  isSystem: boolean;
+
   // Auditoría
   @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   createdAt: Date;
@@ -64,7 +67,7 @@ export class ProductCategory {
     nullable: true,
   })
   category?: ProductCategory | null;
-  
+
   @OneToMany(() => Product, (product) => product.category)
   products: Product[];
 }

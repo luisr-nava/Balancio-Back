@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+} from '@nestjs/common';
 import { CreateSaleDto } from './dto/create-sale.dto';
 import { UpdateSaleDto } from './dto/update-sale.dto';
 import {
@@ -27,7 +31,9 @@ import {
   NotificationSeverity,
   NotificationType,
 } from '@/notification/entities/notification.entity';
+import { formatNotification } from '@/notification/notification-formatter';
 import { User, UserRole } from '@/auth/entities/user.entity';
+import { UserShop } from '@/auth/entities/user-shop.entity';
 import { ReceiptService } from './receipt/receipt.service';
 import { Shop } from '@/shop/entities/shop.entity';
 import { ReceiptPdfFactory } from './receipt/pdf/receipt-pdf.factory';
@@ -37,6 +43,7 @@ import {
 } from '@/customer-account/entities/customer-account-movement.entity';
 import { CustomerShop } from '@/customer-account/entities/customer-shop.entity';
 import { CustomerAccountService } from '@/customer-account/customer-account.service';
+import { RealtimeEvents, RealtimeGateway } from '@/realtime/realtime.gateway';
 
 @Injectable()
 export class SaleService {
@@ -54,11 +61,14 @@ export class SaleService {
     private readonly saleHistoryRepo: Repository<SaleHistory>,
     @InjectRepository(SaleItemHistory)
     private readonly saleItemHistoryRepo: Repository<SaleItemHistory>,
+    @InjectRepository(UserShop)
+    private readonly userShopRepo: Repository<UserShop>,
     private readonly cashRegisterService: CashRegisterService,
     private readonly mercadoPagoService: MercadoPagoService,
     private readonly notificationService: NotificationService,
     private readonly receiptService: ReceiptService,
     private readonly customerAccountService: CustomerAccountService,
+    private readonly realtimeGateway: RealtimeGateway,
   ) {}
   async create(dto: CreateSaleDto, user: JwtPayload) {
     return this.dataSource.transaction(async (manager) => {
@@ -83,16 +93,46 @@ export class SaleService {
       let saleTaxAmount = 0;
       let saleTotal = 0;
 
-      for (const item of dto.items) {
-        const quantity = Number(item.quantity);
+  for (const item of dto.items) {
+    const quantity = Number(item.quantity);
 
-        if (quantity <= 0) {
-          throw new BadRequestException(
-            `Cantidad inválida para el producto ${item.shopProductId}`,
-          );
-        }
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      throw new BadRequestException(
+        `Cantidad inválida para el producto ${item.shopProductId}`,
+      );
+    }
 
-        const itemSubtotal = quantity * item.unitPrice;
+    if (quantity > 999999) {
+      throw new BadRequestException(
+        `Cantidad excesiva para el producto ${item.shopProductId}`,
+      );
+    }
+
+    if (!Number.isFinite(item.unitPrice)) {
+      throw new BadRequestException(
+        `Precio unitario inválido para el producto ${item.shopProductId}`,
+      );
+    }
+
+    if (item.unitPrice > 999999999) {
+      throw new BadRequestException(
+        `Precio excesivo para el producto ${item.shopProductId}`,
+      );
+    }
+
+    if (item.discount !== undefined && !Number.isFinite(item.discount)) {
+      throw new BadRequestException(
+        `Descuento inválido para el producto ${item.shopProductId}`,
+      );
+    }
+
+    if (item.taxRate !== undefined && !Number.isFinite(item.taxRate)) {
+      throw new BadRequestException(
+        `Tasa de impuesto inválida para el producto ${item.shopProductId}`,
+      );
+    }
+
+    const itemSubtotal = quantity * item.unitPrice;
         const itemTax = item.taxRate ? itemSubtotal * item.taxRate : 0;
         const itemDiscount = item.discount ?? 0;
         const itemTotal = itemSubtotal - itemDiscount + itemTax;
@@ -307,25 +347,30 @@ export class SaleService {
           // Fecha local para la clave de deduplicación (evita duplicados el mismo día)
           const today = new Date().toISOString().split('T')[0];
 
-          for (const u of shopUsers) {
-            await this.notificationService.createNotification(
-              {
-                userId: u.id,
-                shopId: dto.shopId,
-                type: NotificationType.LOW_STOCK,
-                title: 'Stock bajo',
-                message: `${shopProduct.product.name} tiene ${updatedStock} unidades restantes`,
-                severity: NotificationSeverity.WARNING,
-                metadata: {
-                  shopProductId: shopProduct.id,
-                  productName: shopProduct.product.name,
-                  remainingStock: updatedStock,
-                },
-                deduplicationKey: `LOW_STOCK:${shopProduct.id}:${u.id}:${today}`,
-              },
-              manager,
-            );
-          }
+        for (const u of shopUsers) {
+          const metadata = {
+            shopProductId: shopProduct.id,
+            productName: shopProduct.product.name,
+            remainingStock: updatedStock,
+          };
+          const { title, message } = formatNotification(
+            NotificationType.LOW_STOCK,
+            metadata,
+          );
+          await this.notificationService.createNotification(
+            {
+              userId: u.id,
+              shopId: dto.shopId,
+              type: NotificationType.LOW_STOCK,
+              title,
+              message,
+              severity: NotificationSeverity.WARNING,
+              metadata,
+              deduplicationKey: `LOW_STOCK:${shopProduct.id}:${u.id}:${today}`,
+            },
+            manager,
+          );
+        }
         }
       }
 
@@ -391,19 +436,24 @@ export class SaleService {
       for (const recipient of notificationRecipients.filter((u) =>
         [UserRole.OWNER, UserRole.MANAGER].includes(u.role),
       )) {
+        const metadata = {
+          saleId: sale.id,
+          amount: sale.totalAmount,
+          paymentStatus: sale.paymentStatus,
+        };
+        const { title, message } = formatNotification(
+          NotificationType.SALE_CREATED,
+          metadata,
+        );
         await this.notificationService.createNotification(
           {
             userId: recipient.id,
             shopId: dto.shopId,
             type: NotificationType.SALE_CREATED,
-            title: 'Nueva venta registrada',
-            message: `Venta por $${Number(sale.totalAmount).toFixed(2)} registrada`,
+            title,
+            message,
             severity: NotificationSeverity.SUCCESS,
-            metadata: {
-              saleId: sale.id,
-              amount: sale.totalAmount,
-              paymentStatus: sale.paymentStatus,
-            },
+            metadata,
           },
           manager,
         );
@@ -418,13 +468,25 @@ export class SaleService {
         lock: { mode: 'pessimistic_write' },
       });
 
-      if (!shop) {
-        throw new BadRequestException('Shop not found');
-      }
+    if (!shop) {
+      throw new BadRequestException('Shop not found');
+    }
 
-      const receiptNumber = shop.receiptSequence;
-      shop.receiptSequence += 1;
-      await manager.save(shop);
+    const result = await manager.increment(
+      Shop,
+      { id: shop.id },
+      'receiptSequence',
+      1,
+    );
+
+    if (result.affected === 0) {
+      throw new BadRequestException('Error al generar número de recibo');
+    }
+
+    const updatedShop = await manager.findOne(Shop, {
+      where: { id: shop.id },
+    });
+    const receiptNumber = updatedShop!.receiptSequence - 1;
 
       // 🔁 Recargar venta con items reales
       const saleWithItems = await manager.findOne(Sale, {
@@ -483,6 +545,11 @@ export class SaleService {
 
     const where: any = {};
 
+    // 🔐 VALIDATE SHOP FILTER
+    if (filters.shopId) {
+      await this.validateUserShopAccess(user, filters.shopId);
+    }
+
     // 🔐 VISIBILIDAD POR ROL
     if (user.role === 'EMPLOYEE') {
       // solo sus ventas
@@ -491,11 +558,16 @@ export class SaleService {
 
     if (user.role === 'MANAGER') {
       // solo tiendas donde trabaja
-      if (!user.shopIds || user.shopIds.length === 0) {
+      const userShops = await this.userShopRepo.find({
+        where: { userId: user.id },
+      });
+      const userShopIds = userShops.map((us) => us.shopId);
+
+      if (userShopIds.length === 0) {
         return { data: [], total: 0, page, limit };
       }
 
-      where.shopId = filters.shopId ? filters.shopId : In(user.shopIds);
+      where.shopId = filters.shopId ? filters.shopId : In(userShopIds);
     }
 
     if (user.role === 'OWNER') {
@@ -589,22 +661,8 @@ export class SaleService {
   // GET BY ID
   // ─────────────────────────────────────────────
   async getById(id: string, user: JwtPayload) {
-    const where: any = { id };
-
-    // 🔐 VISIBILIDAD POR ROL
-    if (user.role === 'EMPLOYEE') {
-      where.employeeId = user.id;
-    }
-
-    if (user.role === 'MANAGER') {
-      if (!user.shopIds || user.shopIds.length === 0) {
-        throw new BadRequestException('No tiene acceso a ninguna tienda');
-      }
-      where.shopId = In(user.shopIds);
-    }
-
     const sale = await this.saleRepo.findOne({
-      where,
+      where: { id },
       relations: {
         shop: true,
         customer: true,
@@ -620,6 +678,8 @@ export class SaleService {
     if (!sale) {
       throw new BadRequestException('Venta no encontrada');
     }
+
+    await this.assertSaleAccess(sale, user);
 
     return {
       id: sale.id,
@@ -651,18 +711,20 @@ export class SaleService {
   // ─────────────────────────────────────────────
   // UPDATE SALE
   // ─────────────────────────────────────────────
+  // UPDATE SALE
+  // ─────────────────────────────────────────────
   async update(id: string, dto: UpdateSaleDto, user: JwtPayload) {
-    return this.dataSource.transaction(async (manager) => {
-      const sale = await manager.findOne(Sale, {
+    const result: { id: string; shopId: string; totalAmount: number; paymentStatus: PaymentStatus; updatedAt: Date } = await this.dataSource.transaction(async (manager) => {
+      const sale = (await manager.findOne(Sale, {
         where: { id },
-        relations: {
-          cashMovement: true, // 👈 SOLO ESTO
-        },
-      });
+        relations: { cashMovement: true },
+      }))!;
 
       if (!sale) {
         throw new BadRequestException('Venta no encontrada');
       }
+
+      await this.assertSaleAccess(sale, user);
 
       // 1️⃣ Venta de caja cerrada → NO editable
       if (sale.cashMovement?.cashRegisterId) {
@@ -779,15 +841,16 @@ export class SaleService {
           lock: { mode: 'pessimistic_write' },
         });
 
-        if (!customerShop) {
-          // Legacy sale without CustomerShop record — skip debt update
-          return {
-            id: sale.id,
-            totalAmount: sale.totalAmount,
-            paymentStatus: sale.paymentStatus,
-            updatedAt: new Date(),
-          };
-        }
+      if (!customerShop) {
+        // Legacy sale without CustomerShop record — skip debt update
+        return {
+          id: sale.id,
+          shopId: sale.shopId,
+          totalAmount: sale.totalAmount,
+          paymentStatus: sale.paymentStatus,
+          updatedAt: new Date(),
+        };
+      }
 
         // PENDING → PAID: collect payment, reduce debt, create cash movement
         if (
@@ -875,26 +938,40 @@ export class SaleService {
         }
       }
 
-      // 7️⃣ Sync cash movement
-      if (sale.cashMovement && sale.paymentStatus === PaymentStatus.PAID) {
-        sale.cashMovement.amount = sale.totalAmount;
-        await manager.save(sale.cashMovement);
-      }
+    // 7️⃣ Sync cash movement
+    if (sale.cashMovement && sale.paymentStatus === PaymentStatus.PAID) {
+      sale.cashMovement.amount = sale.totalAmount;
+      await manager.save(sale.cashMovement);
+    }
 
-      return {
-        id: sale.id,
-        totalAmount: sale.totalAmount,
-        paymentStatus: sale.paymentStatus,
-        updatedAt: new Date(),
-      };
+    return {
+      id: sale.id,
+      shopId: sale.shopId,
+      totalAmount: sale.totalAmount,
+      paymentStatus: sale.paymentStatus,
+      updatedAt: new Date(),
+    } as const;
     });
+
+    this.realtimeGateway.emitToShop(
+      result.shopId,
+      RealtimeEvents.SALE_UPDATED,
+      { saleId: result.id, shopId: result.shopId },
+    );
+
+    return {
+      id: result.id,
+      totalAmount: result.totalAmount,
+      paymentStatus: result.paymentStatus,
+      updatedAt: result.updatedAt,
+    };
   }
 
   // ─────────────────────────────────────────────
   // CANCEL SALE
   // ─────────────────────────────────────────────
   async cancel(id: string, dto: CancelSaleDto, user: JwtPayload) {
-    return this.dataSource.transaction(async (manager) => {
+    const result = await this.dataSource.transaction(async (manager) => {
       const sale = await manager.findOne(Sale, {
         where: { id },
         relations: ['items', 'cashMovement'],
@@ -907,6 +984,8 @@ export class SaleService {
       if (sale.status === SaleStatus.CANCELLED) {
         throw new BadRequestException('La venta ya está cancelada');
       }
+
+      await this.assertSaleAccess(sale, user);
 
       // Capture before mutation so snapshot is accurate
       const previousStatus = sale.status;
@@ -1039,25 +1118,38 @@ export class SaleService {
 
       // 🔔 Crear notificación para cada uno
       for (const recipient of recipients) {
+        const metadata = { saleId: sale.id, amount: sale.totalAmount };
+        const { title, message } = formatNotification(
+          NotificationType.SALE_CANCELED,
+          metadata,
+        );
         await this.notificationService.createNotification(
           {
             userId: recipient.id,
             shopId: sale.shopId,
             type: NotificationType.SALE_CANCELED,
-            title: 'Venta anulada',
-            message: `Venta anulada por $${sale.totalAmount}`,
+            title,
+            message,
             severity: NotificationSeverity.INFO,
-            metadata: { saleId: sale.id, amount: sale.totalAmount },
+            metadata,
           },
           manager,
         );
       }
 
-      return { message: 'Venta cancelada correctamente' };
+    return { saleId: sale.id, shopId: sale.shopId };
     });
+
+    this.realtimeGateway.emitToShop(
+      result.shopId,
+      RealtimeEvents.SALE_CANCELLED,
+      { saleId: result.saleId, shopId: result.shopId },
+    );
+
+    return { message: 'Venta cancelada correctamente' };
   }
 
-  async markSaleAsPaidFromWebhook(saleId: string) {
+  async markSaleAsPaidFromWebhook(saleId: string, expectedAmount?: number) {
     return this.dataSource.transaction(async (manager) => {
       const sale = await manager.findOne(Sale, {
         where: { id: saleId },
@@ -1066,21 +1158,27 @@ export class SaleService {
 
       if (!sale) throw new BadRequestException('Venta no encontrada');
 
+      if (expectedAmount !== undefined && Number(sale.totalAmount) !== expectedAmount) {
+        throw new BadRequestException('Monto del pago no coincide con la venta');
+      }
+
+      if (sale.paymentStatus === PaymentStatus.PAID) {
+        return { message: 'Venta ya estaba pagada' };
+      }
+
       const cashRegister = await this.cashRegisterService.getCurrentForUser(
         sale.shopId,
         sale.employeeId!,
       );
 
-      if (!cashRegister) {
-        throw new BadRequestException(
-          'No hay caja abierta para registrar el pago',
-        );
-      }
+    if (!cashRegister) {
+      throw new BadRequestException(
+        'No hay caja abierta para registrar el pago',
+      );
+    }
 
-      if (sale.paymentStatus === PaymentStatus.PAID) return;
-
-      sale.paymentStatus = PaymentStatus.PAID;
-      sale.status = SaleStatus.COMPLETED;
+    sale.paymentStatus = PaymentStatus.PAID;
+    sale.status = SaleStatus.COMPLETED;
 
       await manager.save(sale);
       if (!sale.employeeId) {
@@ -1098,5 +1196,53 @@ export class SaleService {
 
       await manager.save(movement);
     });
+  }
+
+  private async assertSaleAccess(sale: Sale, user: JwtPayload): Promise<void> {
+    if (user.role === UserRole.OWNER) {
+      const userShop = await this.userShopRepo.findOne({
+        where: { userId: user.id, shopId: sale.shopId },
+      });
+      if (!userShop) {
+        throw new ForbiddenException('No tienes acceso a esta tienda');
+      }
+      return;
+    }
+
+    if (user.role === UserRole.MANAGER) {
+      const userShop = await this.userShopRepo.findOne({
+        where: { userId: user.id, shopId: sale.shopId },
+      });
+      if (!userShop) {
+        throw new ForbiddenException('No tienes acceso a esta tienda');
+      }
+      return;
+    }
+
+    if (user.role === UserRole.EMPLOYEE) {
+      if (sale.employeeId !== user.id) {
+        throw new ForbiddenException('No tienes permisos para acceder a esta venta');
+      }
+      return;
+    }
+
+    throw new ForbiddenException('Rol no autorizado');
+  }
+
+  private async validateUserShopAccess(
+    user: JwtPayload,
+    shopId: string,
+  ): Promise<void> {
+    if (user.role === UserRole.OWNER) {
+      return;
+    }
+
+    const userShop = await this.userShopRepo.findOne({
+      where: { userId: user.id, shopId },
+    });
+
+    if (!userShop) {
+      throw new ForbiddenException('No tienes acceso a esta tienda');
+    }
   }
 }

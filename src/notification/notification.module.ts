@@ -6,10 +6,11 @@ import { NotificationGateway } from './notification.gateway';
 import { NotificationListener } from './notification.listener';
 import { Notification } from './entities/notification.entity';
 import { UserNotificationPreference } from './entities/notification-preference.entity';
+import { User } from '@/auth/entities/user.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Notification, UserNotificationPreference]),
+    TypeOrmModule.forFeature([Notification, UserNotificationPreference, User]),
     // EventEmitterModule is registered globally in AppModule — no re-import needed.
   ],
   controllers: [NotificationController],

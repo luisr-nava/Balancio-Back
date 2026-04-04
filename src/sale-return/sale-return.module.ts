@@ -8,6 +8,7 @@ import { Sale } from '@/sale/entities/sale.entity';
 import { SaleItem } from '@/sale/entities/sale-item.entity';
 import { CashMovement } from '@/cash-movement/entities/cash-movement.entity';
 import { ShopProduct } from '@/product/entities/shop-product.entity';
+import { UserShop } from '@/auth/entities/user-shop.entity';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { ShopProduct } from '@/product/entities/shop-product.entity';
       SaleItem,
       CashMovement,
       ShopProduct,
+      UserShop,
     ]),
   ],
   controllers: [SaleReturnController],

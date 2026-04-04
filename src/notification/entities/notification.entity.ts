@@ -40,6 +40,7 @@ export enum NotificationSeverity {
 @Index(['userId', 'type', 'createdAt'])
 @Index(['userId', 'shopId', 'createdAt'])
 @Index(['deduplicationKey'], { where: '"deduplicationKey" IS NOT NULL' })
+@Index(['groupKey'], { where: '"groupKey" IS NOT NULL' })
 export class Notification {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -87,6 +88,23 @@ export class Notification {
    */
   @Column({ type: 'varchar', nullable: true, default: null })
   deduplicationKey: string | null;
+
+  /**
+   * Optional grouping key for aggregating similar notifications.
+   * When set, new notifications with the same groupKey will increment
+   * the count of an existing notification instead of creating a new one.
+   * Suggested format: "{TYPE}:{userId}:{YYYY-MM-DD}"
+   */
+  @Column({ type: 'varchar', nullable: true, default: null })
+  groupKey: string | null;
+
+  /**
+   * Number of notifications aggregated under this group.
+   * Default is 1 (single notification). When > 1, the message should
+   * reflect the aggregated count (e.g., "5 ventas por $1,234.56").
+   */
+  @Column({ type: 'int', default: 1 })
+  count: number;
 
   @CreateDateColumn()
   createdAt: Date;

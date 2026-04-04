@@ -12,7 +12,9 @@ import {
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 
-export class UpdateMeasurementUnitDto extends PartialType(CreateMeasurementUnitDto) {
+export class UpdateMeasurementUnitDto extends PartialType(
+  CreateMeasurementUnitDto,
+) {
   @IsString()
   @IsOptional()
   name?: string;

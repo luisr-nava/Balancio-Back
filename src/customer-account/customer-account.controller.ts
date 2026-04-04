@@ -48,7 +48,9 @@ export class CustomerAccountController {
     const parsedMaxDebt =
       maxDebt && !isNaN(Number(maxDebt)) ? Number(maxDebt) : undefined;
     const parsedDebtStatus =
-      debtStatus === 'pending' || debtStatus === 'paid' ? debtStatus : undefined;
+      debtStatus === 'pending' || debtStatus === 'paid'
+        ? debtStatus
+        : undefined;
 
     return this.service.getDebtors({
       shopId,

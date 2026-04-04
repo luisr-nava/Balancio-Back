@@ -6,6 +6,8 @@ import Stripe from 'stripe';
 import { RawBodyRequest } from './types/raw-body-request';
 import { Subscription as SubscriptionEntity } from './entities/subscription.entity';
 import { envs } from '@/config';
+import { RealtimeGateway, RealtimeEvents } from '@/realtime/realtime.gateway';
+import { UserShop } from '@/auth/entities/user-shop.entity';
 
 type StripeSubscriptionWithPeriod = Stripe.Subscription & {
   current_period_end?: number | null;
@@ -18,6 +20,9 @@ export class BillingService {
   constructor(
     @InjectRepository(SubscriptionEntity)
     private readonly subscriptionRepository: Repository<SubscriptionEntity>,
+    @InjectRepository(UserShop)
+    private readonly userShopRepo: Repository<UserShop>,
+    private readonly realtimeGateway: RealtimeGateway,
   ) {}
 
   async getSubscriptionByOwner(ownerId: string) {
@@ -114,9 +119,7 @@ export class BillingService {
     const stripe = new Stripe(envs.stripeSecretKey!);
 
     const priceId =
-      plan === 'BASIC'
-        ? envs.stripePriceBasic!
-        : envs.stripePricePro!;
+      plan === 'BASIC' ? envs.stripePriceBasic! : envs.stripePricePro!;
 
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
@@ -145,13 +148,17 @@ export class BillingService {
     );
 
     if (!session.subscription || !session.customer) {
-      this.logger.warn('checkout.session.completed: falta subscription o customer, ignorando');
+      this.logger.warn(
+        'checkout.session.completed: falta subscription o customer, ignorando',
+      );
       return;
     }
 
     const ownerId = session.metadata?.ownerId;
     if (!ownerId) {
-      this.logger.warn('checkout.session.completed: falta metadata.ownerId, ignorando');
+      this.logger.warn(
+        'checkout.session.completed: falta metadata.ownerId, ignorando',
+      );
       return;
     }
 
@@ -174,7 +181,9 @@ export class BillingService {
         { ownerId },
         { stripeCustomerId, stripeSubscriptionId },
       );
-      this.logger.log(`✅ checkout.session.completed: updated subscription row for ownerId=${ownerId}`);
+      this.logger.log(
+        `✅ checkout.session.completed: updated subscription row for ownerId=${ownerId}`,
+      );
     } else {
       await this.subscriptionRepository.insert({
         ownerId,
@@ -183,7 +192,9 @@ export class BillingService {
         status: SubscriptionStatus.INCOMPLETE,
         plan: 'FREE',
       });
-      this.logger.log(`✅ checkout.session.completed: inserted new subscription row for ownerId=${ownerId}`);
+      this.logger.log(
+        `✅ checkout.session.completed: inserted new subscription row for ownerId=${ownerId}`,
+      );
     }
   }
 
@@ -266,7 +277,9 @@ export class BillingService {
     });
 
     if (entity) {
-      this.logger.log(`🔍 [1] Encontrada por stripeSubscriptionId=${stripeSubscriptionId}`);
+      this.logger.log(
+        `🔍 [1] Encontrada por stripeSubscriptionId=${stripeSubscriptionId}`,
+      );
       return entity;
     }
 
@@ -281,7 +294,9 @@ export class BillingService {
       });
 
       if (entity) {
-        this.logger.log(`🔍 [2] Encontrada por stripeCustomerId=${stripeCustomerId} — backfilling stripeSubscriptionId`);
+        this.logger.log(
+          `🔍 [2] Encontrada por stripeCustomerId=${stripeCustomerId} — backfilling stripeSubscriptionId`,
+        );
         await this.subscriptionRepository.update(
           { id: entity.id },
           { stripeSubscriptionId },
@@ -290,12 +305,15 @@ export class BillingService {
         return entity;
       }
 
-      this.logger.warn(`🔍 [2] No encontrada por stripeCustomerId=${stripeCustomerId}`);
+      this.logger.warn(
+        `🔍 [2] No encontrada por stripeCustomerId=${stripeCustomerId}`,
+      );
     }
 
     // ── 3. Fallback: retrieve Stripe subscription and read ownerId from metadata ─
     try {
-      const stripeSub = await stripe.subscriptions.retrieve(stripeSubscriptionId);
+      const stripeSub =
+        await stripe.subscriptions.retrieve(stripeSubscriptionId);
       const ownerId = stripeSub.metadata?.ownerId;
 
       this.logger.log(
@@ -308,7 +326,9 @@ export class BillingService {
         });
 
         if (entity) {
-          this.logger.log(`🔍 [3] Encontrada por ownerId=${ownerId} — backfilling stripeSubscriptionId + stripeCustomerId`);
+          this.logger.log(
+            `🔍 [3] Encontrada por ownerId=${ownerId} — backfilling stripeSubscriptionId + stripeCustomerId`,
+          );
           const customerId =
             typeof stripeSub.customer === 'string'
               ? stripeSub.customer
@@ -323,7 +343,9 @@ export class BillingService {
           return entity;
         }
 
-        this.logger.warn(`🔍 [3] No encontrada por ownerId=${ownerId} — inserting new row`);
+        this.logger.warn(
+          `🔍 [3] No encontrada por ownerId=${ownerId} — inserting new row`,
+        );
 
         // Row doesn't exist yet (invoice.paid arrived before checkout.session.completed)
         // Create the row now so the plan can be saved, and checkout.session.completed
@@ -369,7 +391,9 @@ export class BillingService {
     );
 
     if (!invoice.subscription) {
-      this.logger.warn('invoice.paid: sin subscription id (factura de pago único), ignorando');
+      this.logger.warn(
+        'invoice.paid: sin subscription id (factura de pago único), ignorando',
+      );
       return;
     }
 
@@ -425,12 +449,18 @@ export class BillingService {
     this.logger.log(
       `✅ invoice.paid: suscripción ${subscriptionEntity.id} actualizada | plan=${updateData.plan} | status=active`,
     );
+
+    await this.emitSubscriptionUpdate(subscriptionEntity.ownerId);
   }
 
   private async handleSubscriptionDeleted(event: Stripe.Event) {
     const sub = event.data.object as Stripe.Subscription;
 
     this.logger.log(`🗑️ customer.subscription.deleted | sub=${sub.id}`);
+
+    const subscription = await this.subscriptionRepository.findOne({
+      where: { stripeSubscriptionId: sub.id },
+    });
 
     await this.subscriptionRepository.update(
       { stripeSubscriptionId: sub.id },
@@ -443,6 +473,10 @@ export class BillingService {
         currentPeriodEnd: undefined,
       },
     );
+
+    if (subscription) {
+      await this.emitSubscriptionUpdate(subscription.ownerId);
+    }
   }
 
   private async handleInvoicePaymentFailed(event: Stripe.Event) {
@@ -450,9 +484,15 @@ export class BillingService {
       subscription?: string | null;
     };
 
-    this.logger.warn(`❌ invoice.payment_failed | invoice=${invoice.id} | sub=${invoice.subscription}`);
+    this.logger.warn(
+      `❌ invoice.payment_failed | invoice=${invoice.id} | sub=${invoice.subscription}`,
+    );
 
     if (!invoice.subscription) return;
+
+    const subscription = await this.subscriptionRepository.findOne({
+      where: { stripeSubscriptionId: invoice.subscription },
+    });
 
     await this.subscriptionRepository.update(
       { stripeSubscriptionId: invoice.subscription },
@@ -460,6 +500,10 @@ export class BillingService {
         status: SubscriptionStatus.PAST_DUE,
       },
     );
+
+    if (subscription) {
+      await this.emitSubscriptionUpdate(subscription.ownerId);
+    }
   }
 
   async requestPlanChange(ownerId: string, plan: 'BASIC' | 'PRO' | 'FREE') {
@@ -500,13 +544,13 @@ export class BillingService {
 
     const currentItemId = stripeSubscription.items.data[0]?.id;
     if (!currentItemId) {
-      throw new BadRequestException('No se encontró el item de suscripción en Stripe');
+      throw new BadRequestException(
+        'No se encontró el item de suscripción en Stripe',
+      );
     }
 
     const newPriceId =
-      plan === 'BASIC'
-        ? envs.stripePriceBasic!
-        : envs.stripePricePro!;
+      plan === 'BASIC' ? envs.stripePriceBasic! : envs.stripePricePro!;
 
     // Update the price in Stripe so the next billing cycle charges the correct
     // amount. proration_behavior: 'none' applies the change at period end
@@ -521,6 +565,8 @@ export class BillingService {
       { id: subscription.id },
       { pendingPlan: plan },
     );
+
+    await this.emitSubscriptionUpdate(ownerId);
 
     return {
       message: `El cambio a ${plan} se aplicará al finalizar el período`,
@@ -558,9 +604,34 @@ export class BillingService {
       },
     );
 
+    await this.emitSubscriptionUpdate(ownerId);
+
     return {
       message: 'La suscripción se cancelará al finalizar el período',
       effectiveAt: subscription.currentPeriodEnd,
     };
+  }
+
+  private async emitSubscriptionUpdate(ownerId: string): Promise<void> {
+    const subscription = await this.subscriptionRepository.findOne({
+      where: { ownerId },
+    });
+
+    if (!subscription) return;
+
+    const userShops = await this.userShopRepo.find({
+      where: { userId: ownerId },
+    });
+
+    for (const userShop of userShops) {
+      this.realtimeGateway.emitToShop(
+        userShop.shopId,
+        RealtimeEvents.SUBSCRIPTION_UPDATED,
+        {
+          plan: subscription.plan,
+          status: subscription.status,
+        },
+      );
+    }
   }
 }

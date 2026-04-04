@@ -35,9 +35,9 @@ export class CustomerController {
   update(
     @Param('id') id: string,
     @Body() updateCustomerDto: UpdateCustomerDto,
-    shopId: string,
+    @GetUser() user: JwtPayload,
   ) {
-    return this.customerService.update(id, updateCustomerDto, shopId);
+    return this.customerService.update(id, updateCustomerDto, user);
   }
 
   @UseGuards(JwtAuthGuard)

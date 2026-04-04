@@ -18,6 +18,9 @@ import { ReceiptModule } from './receipt/receipt.module';
 import { CustomerAccountMovement } from '@/customer-account/entities/customer-account-movement.entity';
 import { CustomerShop } from '@/customer-account/entities/customer-shop.entity';
 import { CustomerAccountModule } from '@/customer-account/customer-account.module';
+import { RealtimeModule } from '@/realtime/realtime.module';
+import { CashMovementModule } from '@/cash-movement/cash-movement.module';
+import { UserShop } from '@/auth/entities/user-shop.entity';
 
 @Module({
   imports: [
@@ -32,12 +35,15 @@ import { CustomerAccountModule } from '@/customer-account/customer-account.modul
       CashMovement,
       CustomerAccountMovement,
       CustomerShop,
+      UserShop,
     ]),
     CashRegisterModule, // 👈 obligatorio para validar caja abierta/cerrada
+    CashMovementModule,
     CustomerAccountModule,
     SaleReturnModule,
     NotificationModule,
     ReceiptModule,
+    RealtimeModule,
   ],
   controllers: [SaleController],
   providers: [SaleService, MercadoPagoService],

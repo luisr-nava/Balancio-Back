@@ -7,10 +7,7 @@ import { UserShop } from '@/auth/entities/user-shop.entity';
 import { BillingModule } from '@/billing/billing.module';
 
 @Module({
-  imports: [
-    TypeOrmModule.forFeature([Shop, UserShop]),
-    BillingModule,
-  ],
+  imports: [TypeOrmModule.forFeature([Shop, UserShop]), BillingModule],
   controllers: [ShopController],
   providers: [ShopService],
   exports: [ShopService],

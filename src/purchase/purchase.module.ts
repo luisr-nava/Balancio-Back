@@ -10,6 +10,7 @@ import { PaymentMethod } from '@/payment-method/entities/payment-method.entity';
 import { CashMovement } from '@/cash-movement/entities/cash-movement.entity';
 import { CashRegisterModule } from '@/cash-register/cash-register.module';
 import { CashMovementModule } from '@/cash-movement/cash-movement.module';
+import { RealtimeModule } from '@/realtime/realtime.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { CashMovementModule } from '@/cash-movement/cash-movement.module';
     ]),
     CashRegisterModule, // 👈 ACÁ
     CashMovementModule,
+    RealtimeModule,
   ],
   controllers: [PurchaseController],
   providers: [PurchaseService],

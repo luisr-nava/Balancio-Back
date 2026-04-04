@@ -11,6 +11,7 @@ import {
   UseGuards,
   Headers,
 } from '@nestjs/common';
+import { ThrottlerGuard, Throttle } from '@nestjs/throttler';
 import { SaleService } from './sale.service';
 import { CreateSaleDto } from './dto/create-sale.dto';
 import { UpdateSaleDto } from './dto/update-sale.dto';
@@ -22,6 +23,7 @@ import { JwtAuthGuard } from '@/auth/guards/jwt-auth.guard';
 import { MercadoPagoService } from './mercado-pago.service';
 
 @Controller('sale')
+@UseGuards(ThrottlerGuard)
 export class SaleController {
   constructor(
     private readonly saleService: SaleService,
@@ -85,6 +87,7 @@ export class SaleController {
     return this.saleService.cancel(id, dto, user);
   }
 
+  @Throttle({ default: { limit: 100, ttl: 60000 } })
   @Post('webhooks/mercadopago')
   async mercadoPagoWebhook(
     @Body() body: any,
@@ -94,7 +97,9 @@ export class SaleController {
 
     const paymentId = body.data?.id;
     if (!paymentId || typeof paymentId !== 'string') {
-      throw new BadRequestException('Payload inválido: data.id ausente o incorrecto');
+      throw new BadRequestException(
+        'Payload inválido: data.id ausente o incorrecto',
+      );
     }
     if (!xSignature) {
       throw new BadRequestException('Cabecera x-signature requerida');
@@ -107,7 +112,10 @@ export class SaleController {
     if (mpPayment.status === 'approved') {
       const saleId = mpPayment.external_reference;
 
-      await this.saleService.markSaleAsPaidFromWebhook(saleId!);
+      await this.saleService.markSaleAsPaidFromWebhook(
+        saleId!,
+        mpPayment.transaction_amount,
+      );
     }
 
     return { received: true };

@@ -9,6 +9,7 @@ import {
   NotificationSeverity,
   NotificationType,
 } from '@/notification/entities/notification.entity';
+import { formatNotification } from '@/notification/notification-formatter';
 import { PromotionCreatedEvent } from '../events/promotion-created.event';
 
 @Injectable()
@@ -44,7 +45,10 @@ export class PromotionListener {
       // Deduplicate by userId, keep one shopId per user for the notification
       const userShopMap = new Map<string, UserShop>();
       for (const us of userShops) {
-        if (us.userId !== event.createdByUserId && !userShopMap.has(us.userId)) {
+        if (
+          us.userId !== event.createdByUserId &&
+          !userShopMap.has(us.userId)
+        ) {
           userShopMap.set(us.userId, us);
         }
       }
@@ -64,15 +68,22 @@ export class PromotionListener {
 
       for (const [userId, userShop] of userShopMap.entries()) {
         if (!activeUserIds.has(userId)) continue;
-
+        const metadata = {
+          promotionId: event.promotionId,
+          promotionName: event.name,
+        };
+        const { title, message } = formatNotification(
+          NotificationType.PROMOTION_CREATED,
+          metadata,
+        );
         await this.notificationService.createNotification({
           userId,
           shopId: userShop.shopId,
           type: NotificationType.PROMOTION_CREATED,
-          title: 'Nueva promoción',
-          message: `Nueva promoción activa: ${event.name}`,
+          title,
+          message,
           severity: NotificationSeverity.INFO,
-          metadata: { promotionId: event.promotionId, promotionName: event.name },
+          metadata,
           deduplicationKey: `PROMOTION_CREATED:${event.promotionId}:${userId}:${today}`,
         });
       }

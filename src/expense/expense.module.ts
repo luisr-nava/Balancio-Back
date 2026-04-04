@@ -6,12 +6,15 @@ import { Expense } from './entities/expense.entity';
 import { CashRegisterModule } from '@/cash-register/cash-register.module';
 import { CashMovement } from '@/cash-movement/entities/cash-movement.entity';
 import { CashMovementModule } from '@/cash-movement/cash-movement.module';
+import { RealtimeModule } from '@/realtime/realtime.module';
+import { UserShop } from '@/auth/entities/user-shop.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Expense]),
+    TypeOrmModule.forFeature([Expense, UserShop]),
     CashRegisterModule,
     CashMovementModule,
+    RealtimeModule,
   ],
   controllers: [ExpenseController],
   providers: [ExpenseService],
