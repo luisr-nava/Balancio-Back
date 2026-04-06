@@ -12,6 +12,7 @@ import {
 import { NotificationService } from './notification.service';
 import { GetNotificationsQueryDto } from './dto/get-notifications-query.dto';
 import { UpdateNotificationPreferenceDto } from './dto/update-notification.dto';
+import { BatchUpdatePreferencesDto } from './dto/batch-update-preferences.dto';
 import { JwtAuthGuard } from '@/auth/guards/jwt-auth.guard';
 import { GetUser } from '@/auth/decorators/get-user.decorators';
 import { NotificationType } from './entities/notification.entity';
@@ -84,5 +85,14 @@ export class NotificationController {
       dto.enabled,
       dto.threshold,
     );
+  }
+
+  /** PATCH /notifications/preferences */
+  @Patch('preferences')
+  batchUpdatePreferences(
+    @GetUser() user: User,
+    @Body() dto: BatchUpdatePreferencesDto,
+  ) {
+    return this.notificationService.batchUpdateUserPreferences(user.id, dto.preferences);
   }
 }

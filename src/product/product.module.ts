@@ -13,6 +13,9 @@ import { PurchaseReturnItem } from '@/purchase-return/entities/purchase-return-i
 import { ReplacementItem } from '@/purchase-return/entities/replacement-item.entity';
 import { PromotionItem } from '@/promotion/entities/promotion-item.entity';
 import { SaleItem } from '@/sale/entities/sale-item.entity';
+import { Promotion } from '@/promotion/entities/promotion.entity';
+import { PromotionShop } from '@/promotion/entities/promotion-shop.entity';
+import { PromotionBenefit } from '@/promotion/entities/promotion-benefit.entity';
 import { RealtimeModule } from '@/realtime/realtime.module';
 
 @Module({
@@ -28,6 +31,9 @@ import { RealtimeModule } from '@/realtime/realtime.module';
       ReplacementItem,
       PromotionItem,
       SaleItem,
+      Promotion,
+      PromotionShop,
+      PromotionBenefit,
     ]),
     RealtimeModule,
   ],

@@ -20,6 +20,12 @@ import { PurchaseReturnItem } from '@/purchase-return/entities/purchase-return-i
 import { ReplacementItem } from '@/purchase-return/entities/replacement-item.entity';
 import { PromotionItem } from '@/promotion/entities/promotion-item.entity';
 import { SaleItem } from '@/sale/entities/sale-item.entity';
+import { Promotion } from '@/promotion/entities/promotion.entity';
+import { PromotionShop } from '@/promotion/entities/promotion-shop.entity';
+import {
+  PromotionBenefit,
+  BenefitType,
+} from '@/promotion/entities/promotion-benefit.entity';
 import {
   ProductRealtimePayload,
   RealtimeEvents,
@@ -63,6 +69,15 @@ export class ProductService {
 
     @InjectRepository(SaleItem)
     private readonly saleItemRepository: Repository<SaleItem>,
+
+    @InjectRepository(Promotion)
+    private readonly promotionRepository: Repository<Promotion>,
+
+    @InjectRepository(PromotionShop)
+    private readonly promotionShopRepository: Repository<PromotionShop>,
+
+    @InjectRepository(PromotionBenefit)
+    private readonly promotionBenefitRepository: Repository<PromotionBenefit>,
 
     private readonly realtimeGateway: RealtimeGateway,
   ) {}
@@ -269,7 +284,7 @@ export class ProductService {
         shopProducts: {
           shop: true,
           productHistories: true,
-          supplier: true, // 👈 Asegurate de tener esta relación
+          supplier: true,
         },
       },
       order: {
@@ -279,7 +294,6 @@ export class ProductService {
 
     let filteredProducts = products;
 
-    // 🔎 Buscar por nombre
     if (search) {
       const searchLower = search.toLowerCase();
       filteredProducts = filteredProducts.filter((p) =>
@@ -287,7 +301,6 @@ export class ProductService {
       );
     }
 
-    // 🏢 Filtrar por proveedor
     if (supplierId) {
       filteredProducts = filteredProducts.filter((product) =>
         product.shopProducts.some((sp) => sp.supplierId === supplierId),
@@ -302,7 +315,6 @@ export class ProductService {
 
         shopProducts = shopProducts.filter((sp) => !sp.deletedAt);
 
-        // Siempre solo stock disponible
         shopProducts = shopProducts.filter((sp) => sp.stock! > 0);
 
         if (typeof minStock === 'number') {
@@ -322,6 +334,7 @@ export class ProductService {
           description: product.description,
           imageUrl: product.imageUrl ?? null,
           barcode: product.barcode,
+          allowPriceOverride: product.allowPriceOverride ?? false,
           measurementUnit: product.measurementUnit
             ? {
                 id: product.measurementUnit.id,
@@ -348,7 +361,6 @@ export class ProductService {
       })
       .filter((p): p is NonNullable<typeof p> => p !== null);
 
-    // 📦 Orden por stock
     if (sortByStock) {
       transformed.sort((a, b) => {
         const stockA = a.shops[0]?.stock ?? 0;
@@ -358,7 +370,6 @@ export class ProductService {
       });
     }
 
-    // 💰 Orden por precio (salePrice)
     if (sortByPrice) {
       transformed.sort((a, b) => {
         const priceA = a.shops[0]?.salePrice ?? 0;
@@ -368,14 +379,119 @@ export class ProductService {
       });
     }
 
-    const total = transformed.length;
+    const promotionProducts = await this.getActivePromotionsAsProducts(shopId);
 
-    const paginated = transformed.slice((page - 1) * limit, page * limit);
+    const allProducts = [...transformed, ...promotionProducts];
+
+    const total = allProducts.length;
+
+    const paginated = allProducts.slice((page - 1) * limit, page * limit);
 
     return {
       data: paginated,
       total,
     };
+  }
+
+  private async getActivePromotionsAsProducts(
+    shopId: string | undefined,
+  ): Promise<any[]> {
+    if (!shopId) return [];
+
+    const now = new Date();
+
+    const promotions = await this.promotionRepository
+      .createQueryBuilder('promotion')
+      .leftJoinAndSelect('promotion.shops', 'promoShop')
+      .leftJoinAndSelect('promotion.items', 'items')
+      .leftJoinAndSelect('promotion.benefits', 'benefits')
+      .where('promotion.isActive = true')
+      .andWhere(
+        '(promotion.startDate IS NULL OR promotion.startDate <= :now)',
+        { now },
+      )
+      .andWhere('(promotion.endDate IS NULL OR promotion.endDate >= :now)', {
+        now,
+      })
+      .andWhere('(promotion.scopeType = :all OR promoShop.shopId = :shopId)', {
+        all: 'ALL',
+        shopId,
+      })
+      .getMany();
+
+    const validPromotions: any[] = [];
+
+    for (const promotion of promotions) {
+      const requiredProductIds =
+        promotion.items?.map((item) => item.shopProductId) ?? [];
+
+      if (requiredProductIds.length === 0) {
+        validPromotions.push(promotion);
+        continue;
+      }
+
+    const shopProducts = await this.shopProductRepository.find({
+      where: {
+        id: In(requiredProductIds),
+        shopId,
+      },
+    });
+
+    const hasStock = promotion.items.every((item) => {
+      const shopProduct = shopProducts.find((sp) => sp.id === item.shopProductId);
+      if (!shopProduct) return false;
+      return (shopProduct.stock ?? 0) >= item.quantity;
+    });
+
+    if (hasStock) {
+      validPromotions.push(promotion);
+    }
+    }
+
+    return validPromotions.map((promotion) => {
+      const benefit = promotion.benefits?.[0];
+      let salePrice = 0;
+
+      if (benefit) {
+        switch (benefit.type) {
+          case BenefitType.FIXED_PRICE:
+            salePrice = benefit.value;
+            break;
+          case BenefitType.PERCENT:
+            salePrice = 0;
+            break;
+          case BenefitType.FREE_ITEM:
+            salePrice = 0;
+            break;
+          default:
+            salePrice = 0;
+        }
+      }
+
+      return {
+        id: promotion.id,
+        name: promotion.name,
+        description: promotion.description,
+        imageUrl: null,
+        barcode: `PROMO-${promotion.id}`,
+        allowPriceOverride: false,
+        type: 'PROMOTION',
+        measurementUnit: null,
+        supplier: null,
+        shops: [
+          {
+            shopProductId: `promo-${promotion.id}`,
+            id: shopId,
+            name: '',
+            currency: 'ARS',
+            costPrice: 0,
+            salePrice,
+            stock: 999999,
+            history: [],
+          },
+        ],
+      };
+    });
   }
 
   findOne(id: number) {
@@ -469,29 +585,29 @@ export class ProductService {
         await queryRunner.manager.save(Product, product);
       }
 
-    await queryRunner.commitTransaction();
+      await queryRunner.commitTransaction();
 
-    for (const shopDto of dto.shops) {
-      this.realtimeGateway.emitToShop<ProductRealtimePayload>(
-        shopDto.shopId,
-        RealtimeEvents.PRODUCT_UPDATED,
-        {
-          productId,
-          shopId: shopDto.shopId,
-          shopProductId: '',
-        },
-      );
-    }
+      for (const shopDto of dto.shops) {
+        this.realtimeGateway.emitToShop<ProductRealtimePayload>(
+          shopDto.shopId,
+          RealtimeEvents.PRODUCT_UPDATED,
+          {
+            productId,
+            shopId: shopDto.shopId,
+            shopProductId: '',
+          },
+        );
+      }
 
-    // 🔥 BORRAR IMAGEN ANTERIOR SOLO DESPUÉS DEL COMMIT
-    if (file && previousImagePublicId) {
-      await CloudinaryService.deleteImage(previousImagePublicId);
-    }
+      // 🔥 BORRAR IMAGEN ANTERIOR SOLO DESPUÉS DEL COMMIT
+      if (file && previousImagePublicId) {
+        await CloudinaryService.deleteImage(previousImagePublicId);
+      }
 
-    return {
-      message: 'Producto actualizado correctamente',
-      affectedShops: dto.shops.map((s) => s.shopId),
-    };
+      return {
+        message: 'Producto actualizado correctamente',
+        affectedShops: dto.shops.map((s) => s.shopId),
+      };
     } catch (error) {
       await queryRunner.rollbackTransaction();
 

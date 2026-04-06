@@ -15,10 +15,9 @@ import { InvoiceType, PaymentStatus } from '../entities/sale.entity';
 import { ReceiptPaperSize } from '../receipt/types/receipt.types';
 
 export class CreateSaleItemDto {
-  @IsUUID()
+  @IsString()
   shopProductId: string;
 
-  // balanza friendly (string decimal)
   @IsString()
   quantity: string;
 
@@ -34,9 +33,23 @@ export class CreateSaleItemDto {
   @IsNumber()
   taxRate?: number;
 
-  // frontend lo manda explícito
   @IsOptional()
   priceWasModified?: boolean;
+
+  @IsOptional()
+  isPromotion?: boolean;
+
+  @IsOptional()
+  @IsNumber()
+  total?: number;
+
+  @IsOptional()
+  @IsString()
+  productName?: string;
+
+  @IsOptional()
+  @IsString()
+  barcode?: string;
 }
 
 export class CreateSaleDto {

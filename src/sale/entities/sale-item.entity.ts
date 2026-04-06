@@ -26,7 +26,7 @@ export class SaleItem {
   @Column({ name: 'product_name', type: 'varchar', nullable: false })
   productName: string;
 
-  @Column({ type: 'varchar', nullable: false })
+  @Column({ type: 'varchar', nullable: true })
   barcode: string;
 
   @Column('decimal', {
@@ -64,7 +64,7 @@ export class SaleItem {
   @ManyToOne(() => Sale, { onDelete: 'CASCADE' })
   sale: Sale;
 
-  @ManyToOne(() => ShopProduct)
+  @ManyToOne(() => ShopProduct, { nullable: true })
   shopProduct: ShopProduct;
 
   @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })

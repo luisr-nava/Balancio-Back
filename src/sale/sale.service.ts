@@ -72,7 +72,10 @@ export class SaleService {
   ) {}
   async create(dto: CreateSaleDto, user: JwtPayload) {
     return this.dataSource.transaction(async (manager) => {
-      // 1️⃣ Caja abierta obligatoria
+      if (!dto.items || dto.items.length === 0) {
+        throw new BadRequestException('La venta debe tener al menos un item');
+      }
+
       const cashRegister = await this.cashRegisterService.getCurrentForUser(
         dto.shopId,
         user.id,
@@ -84,63 +87,72 @@ export class SaleService {
         );
       }
 
-      if (!dto.items || dto.items.length === 0) {
-        throw new BadRequestException('La venta debe tener al menos un item');
-      }
-
-      // 2️⃣ Calcular totales
       let saleSubtotal = 0;
       let saleTaxAmount = 0;
       let saleTotal = 0;
 
-  for (const item of dto.items) {
-    const quantity = Number(item.quantity);
+      for (const item of dto.items) {
+        const isPromotion = item.shopProductId.startsWith('promo-');
+        const quantity = Number(item.quantity);
 
-    if (!Number.isFinite(quantity) || quantity <= 0) {
-      throw new BadRequestException(
-        `Cantidad inválida para el producto ${item.shopProductId}`,
-      );
-    }
+        if (!Number.isFinite(quantity) || quantity <= 0) {
+          throw new BadRequestException(
+            `Cantidad inválida para el producto ${item.shopProductId}`,
+          );
+        }
 
-    if (quantity > 999999) {
-      throw new BadRequestException(
-        `Cantidad excesiva para el producto ${item.shopProductId}`,
-      );
-    }
+        if (quantity > 999999) {
+          throw new BadRequestException(
+            `Cantidad excesiva para el producto ${item.shopProductId}`,
+          );
+        }
 
-    if (!Number.isFinite(item.unitPrice)) {
-      throw new BadRequestException(
-        `Precio unitario inválido para el producto ${item.shopProductId}`,
-      );
-    }
+        if (!Number.isFinite(item.unitPrice)) {
+          throw new BadRequestException(
+            `Precio unitario inválido para el producto ${item.shopProductId}`,
+          );
+        }
 
-    if (item.unitPrice > 999999999) {
-      throw new BadRequestException(
-        `Precio excesivo para el producto ${item.shopProductId}`,
-      );
-    }
+        if (item.unitPrice > 999999999) {
+          throw new BadRequestException(
+            `Precio excesivo para el producto ${item.shopProductId}`,
+          );
+        }
 
-    if (item.discount !== undefined && !Number.isFinite(item.discount)) {
-      throw new BadRequestException(
-        `Descuento inválido para el producto ${item.shopProductId}`,
-      );
-    }
+        if (item.discount !== undefined && !Number.isFinite(item.discount)) {
+          throw new BadRequestException(
+            `Descuento inválido para el producto ${item.shopProductId}`,
+          );
+        }
 
-    if (item.taxRate !== undefined && !Number.isFinite(item.taxRate)) {
-      throw new BadRequestException(
-        `Tasa de impuesto inválida para el producto ${item.shopProductId}`,
-      );
-    }
+        if (item.taxRate !== undefined && !Number.isFinite(item.taxRate)) {
+          throw new BadRequestException(
+            `Tasa de impuesto inválido para el producto ${item.shopProductId}`,
+          );
+        }
 
-    const itemSubtotal = quantity * item.unitPrice;
-        const itemTax = item.taxRate ? itemSubtotal * item.taxRate : 0;
-        const itemDiscount = item.discount ?? 0;
-        const itemTotal = itemSubtotal - itemDiscount + itemTax;
+        const unitPrice = isPromotion
+          ? -Math.abs(Number(item.unitPrice))
+          : Number(item.unitPrice);
+        const itemSubtotal = quantity * unitPrice;
+        const itemTax = isPromotion
+          ? 0
+          : item.taxRate
+            ? itemSubtotal * item.taxRate
+            : 0;
+        const itemDiscount = isPromotion ? 0 : (item.discount ?? 0);
+        const itemTotal = isPromotion
+          ? itemSubtotal
+          : itemSubtotal - itemDiscount + itemTax;
 
-        saleSubtotal += itemSubtotal;
-        saleTaxAmount += itemTax;
+        if (!isPromotion) {
+          saleSubtotal += itemSubtotal;
+          saleTaxAmount += itemTax;
+        }
         saleTotal += itemTotal;
       }
+
+      const finalTotal = saleTotal;
 
       // 2.5️⃣ Determinar paymentStatus e isOnCredit antes de persistir la venta
       const isOnCredit = dto.isOnCredit === true;
@@ -148,7 +160,10 @@ export class SaleService {
         dto.paymentStatus = PaymentStatus.PENDING;
       }
 
-      if ((dto.paymentStatus === PaymentStatus.PENDING || isOnCredit) && !dto.customerId) {
+      if (
+        (dto.paymentStatus === PaymentStatus.PENDING || isOnCredit) &&
+        !dto.customerId
+      ) {
         throw new BadRequestException('Una venta fiada requiere un cliente');
       }
 
@@ -163,8 +178,8 @@ export class SaleService {
         subtotal: saleSubtotal,
         discountAmount: dto.discountAmount ?? 0,
         taxAmount: saleTaxAmount,
-        totalAmount: saleTotal,
-        finalTotal: saleTotal,
+        totalAmount: finalTotal,
+        finalTotal: finalTotal,
         paymentStatus,
         isOnCredit,
         invoiceType: dto.invoiceType ?? null,
@@ -210,7 +225,10 @@ export class SaleService {
         const newDebt = Number(customerShop.currentDebt) + immutableTotal;
 
         // Validate credit limit only when one is set (> 0)
-        if (customerShop.creditLimit > 0 && newDebt > customerShop.creditLimit) {
+        if (
+          customerShop.creditLimit > 0 &&
+          newDebt > customerShop.creditLimit
+        ) {
           throw new BadRequestException(
             `Límite de crédito excedido. Disponible: $${(
               customerShop.creditLimit - Number(customerShop.currentDebt)
@@ -246,131 +264,157 @@ export class SaleService {
       }
 
       let shopUsers: User[] | null = null;
-      // 4️⃣ Items + stock + history
+
       for (const item of dto.items) {
-        const shopProduct = await manager.findOne(ShopProduct, {
-          where: { id: item.shopProductId, shopId: dto.shopId },
-          relations: {
-            product: true,
-          },
-        });
-
-        if (!shopProduct) {
-          throw new BadRequestException(
-            `Producto ${item.shopProductId} no encontrado`,
-          );
-        }
-
+        const isPromotion = item.shopProductId.startsWith('promo-');
         const quantity = Number(item.quantity);
-        const subtotal = quantity * item.unitPrice;
-        const taxAmount = item.taxRate ? subtotal * item.taxRate : 0;
-        const discount = item.discount ?? 0;
-        const total = subtotal - discount + taxAmount;
 
-        const saleItem = manager.create(SaleItem, {
-          sale,
-          saleId: sale.id,
-          shopProduct,
-          shopProductId: shopProduct.id,
-          quantity: item.quantity,
-          unitPrice: item.unitPrice,
-          subtotal,
-          discount,
-          taxRate: item.taxRate ?? 0,
-          taxAmount,
-          total,
-          priceWasModified: item.priceWasModified ?? false,
-        });
+        if (isPromotion) {
+          const unitPrice = -Math.abs(Number(item.unitPrice));
+          const subtotal = quantity * unitPrice;
+          const total = subtotal;
 
-        await manager.save(saleItem);
-
-        // stock ↓
-        const previousStock = shopProduct.stock ?? 0;
-
-        if (previousStock < quantity) {
-          throw new BadRequestException(
-            `Stock insuficiente para ${shopProduct.product.name}. Disponible: ${previousStock}`,
-          );
-        }
-        const result = await manager.decrement(
-          ShopProduct,
-          {
-            id: shopProduct.id,
-            stock: MoreThanOrEqual(quantity),
-          },
-          'stock',
-          quantity,
-        );
-
-        if (result.affected === 0) {
-          throw new BadRequestException(
-            `Stock insuficiente para ${shopProduct.product.name}`,
-          );
-        }
-
-        // 🔥 Volver a leer el stock actualizado
-        const updatedProduct = await manager.findOne(ShopProduct, {
-          where: { id: shopProduct.id },
-          relations: { product: true },
-        });
-
-        if (!updatedProduct) {
-          throw new BadRequestException(
-            'Producto no encontrado tras actualizar',
-          );
-        }
-
-        // item history
-        await manager.save(
-          manager.create(SaleItemHistory, {
+          const saleItem = manager.create(SaleItem, {
+            sale,
             saleId: sale.id,
-            shopProductId: shopProduct.id,
-            snapshot: {
-              quantity: item.quantity,
-              unitPrice: item.unitPrice,
-              discount,
-              taxRate: item.taxRate ?? 0,
-              priceWasModified: item.priceWasModified ?? false,
-            },
-          }),
-        );
-        const updatedStock = updatedProduct.stock ?? 0;
+            shopProductId: item.shopProductId,
+            productName: item.productName ?? 'Promoción',
+            barcode: item.barcode ?? 'promo',
+            salePrice: unitPrice,
+            quantity: item.quantity,
+            unitPrice: unitPrice,
+            subtotal,
+            discount: 0,
+            taxRate: 0,
+            taxAmount: 0,
+            total,
+            priceWasModified: false,
+          });
 
-        if (previousStock > 5 && updatedStock <= 5) {
-          if (!shopUsers) {
-            shopUsers = await manager.find(User, {
-              relations: { userShops: true },
-              where: { userShops: { shopId: dto.shopId } },
-            });
+          await manager.save(saleItem);
+        } else {
+          const shopProduct = await manager.findOne(ShopProduct, {
+            where: { id: item.shopProductId, shopId: dto.shopId },
+            relations: {
+              product: true,
+            },
+          });
+
+          if (!shopProduct) {
+            throw new BadRequestException(
+              `Producto ${item.shopProductId} no encontrado`,
+            );
           }
 
-          // Fecha local para la clave de deduplicación (evita duplicados el mismo día)
-          const today = new Date().toISOString().split('T')[0];
+          const subtotal = quantity * item.unitPrice;
+          const taxAmount = item.taxRate ? subtotal * item.taxRate : 0;
+          const discount = item.discount ?? 0;
+          const total = subtotal - discount + taxAmount;
 
-        for (const u of shopUsers) {
-          const metadata = {
+          const saleItem = manager.create(SaleItem, {
+            sale,
+            saleId: sale.id,
+            shopProduct,
             shopProductId: shopProduct.id,
             productName: shopProduct.product.name,
-            remainingStock: updatedStock,
-          };
-          const { title, message } = formatNotification(
-            NotificationType.LOW_STOCK,
-            metadata,
-          );
-          await this.notificationService.createNotification(
+            barcode: shopProduct.barcode,
+            salePrice: shopProduct.salePrice,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            subtotal,
+            discount,
+            taxRate: item.taxRate ?? 0,
+            taxAmount,
+            total,
+            priceWasModified: item.priceWasModified ?? false,
+          });
+
+          await manager.save(saleItem);
+
+          const previousStock = shopProduct.stock ?? 0;
+
+          if (previousStock < quantity) {
+            throw new BadRequestException(
+              `Stock insuficiente para ${shopProduct.product.name}. Disponible: ${previousStock}`,
+            );
+          }
+          const result = await manager.decrement(
+            ShopProduct,
             {
-              userId: u.id,
-              shopId: dto.shopId,
-              type: NotificationType.LOW_STOCK,
-              title,
-              message,
-              severity: NotificationSeverity.WARNING,
-              metadata,
-              deduplicationKey: `LOW_STOCK:${shopProduct.id}:${u.id}:${today}`,
+              id: shopProduct.id,
+              stock: MoreThanOrEqual(quantity),
             },
-            manager,
+            'stock',
+            quantity,
           );
-        }
+
+          if (result.affected === 0) {
+            throw new BadRequestException(
+              `Stock insuficiente para ${shopProduct.product.name}`,
+            );
+          }
+
+          const updatedProduct = await manager.findOne(ShopProduct, {
+            where: { id: shopProduct.id },
+            relations: { product: true },
+          });
+
+          if (!updatedProduct) {
+            throw new BadRequestException(
+              'Producto no encontrado tras actualizar',
+            );
+          }
+
+          await manager.save(
+            manager.create(SaleItemHistory, {
+              saleId: sale.id,
+              shopProductId: shopProduct.id,
+              snapshot: {
+                quantity: item.quantity,
+                unitPrice: item.unitPrice,
+                discount,
+                taxRate: item.taxRate ?? 0,
+                priceWasModified: item.priceWasModified ?? false,
+              },
+            }),
+          );
+          const updatedStock = updatedProduct.stock ?? 0;
+
+          if (previousStock > 5 && updatedStock <= 5) {
+            if (!shopUsers) {
+              shopUsers = await manager.find(User, {
+                relations: { userShops: true },
+                where: { userShops: { shopId: dto.shopId } },
+              });
+            }
+
+            const today = new Date().toISOString().split('T')[0];
+
+            for (const u of shopUsers) {
+              const metadata = {
+                shopProductId: shopProduct.id,
+                productName: shopProduct.product.name,
+                remainingStock: updatedStock,
+              };
+              const { title, message } = formatNotification(
+                NotificationType.LOW_STOCK,
+                metadata,
+              );
+              await this.notificationService.createNotification(
+                {
+                  userId: u.id,
+                  shopId: dto.shopId,
+                  type: NotificationType.LOW_STOCK,
+                  title,
+                  message,
+                  severity: NotificationSeverity.WARNING,
+                  metadata,
+                  deduplicationKey: `LOW_STOCK:${shopProduct.id}:${u.id}:${today}`,
+                },
+                manager,
+              );
+            }
+          }
         }
       }
 
@@ -468,25 +512,25 @@ export class SaleService {
         lock: { mode: 'pessimistic_write' },
       });
 
-    if (!shop) {
-      throw new BadRequestException('Shop not found');
-    }
+      if (!shop) {
+        throw new BadRequestException('Shop not found');
+      }
 
-    const result = await manager.increment(
-      Shop,
-      { id: shop.id },
-      'receiptSequence',
-      1,
-    );
+      const result = await manager.increment(
+        Shop,
+        { id: shop.id },
+        'receiptSequence',
+        1,
+      );
 
-    if (result.affected === 0) {
-      throw new BadRequestException('Error al generar número de recibo');
-    }
+      if (result.affected === 0) {
+        throw new BadRequestException('Error al generar número de recibo');
+      }
 
-    const updatedShop = await manager.findOne(Shop, {
-      where: { id: shop.id },
-    });
-    const receiptNumber = updatedShop!.receiptSequence - 1;
+      const updatedShop = await manager.findOne(Shop, {
+        where: { id: shop.id },
+      });
+      const receiptNumber = updatedShop!.receiptSequence - 1;
 
       // 🔁 Recargar venta con items reales
       const saleWithItems = await manager.findOne(Sale, {
@@ -619,12 +663,18 @@ export class SaleService {
         customer: sale.customer?.fullName ?? null,
         paymentMethod: sale.paymentMethod.name,
         items: sale.items.map((item) => {
-          const basePrice =
-            item.shopProduct.salePrice ?? item.shopProduct.costPrice;
+          const isPromotion = item.shopProductId.startsWith('promo-');
+          const basePrice = isPromotion
+            ? item.unitPrice
+            : (item.shopProduct?.salePrice ??
+              item.shopProduct?.costPrice ??
+              item.unitPrice);
 
           return {
             id: item.id,
-            product: item.shopProduct.product.name,
+            product: isPromotion
+              ? item.productName
+              : (item.shopProduct?.product?.name ?? item.productName),
             quantity: item.quantity,
             unitPrice: item.unitPrice,
             basePrice,
@@ -640,15 +690,6 @@ export class SaleService {
         status: sale.status,
         saleDate: sale.saleDate,
         notes: sale.notes,
-        // history:
-        //   sale.history
-        //     ?.sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt))
-        //     .map((h) => ({
-        //       action: h.action,
-        //       userId: h.userId,
-        //       createdAt: h.createdAt,
-        //       snapshot: h.snapshot,
-        //     })) ?? [],
       })),
       total,
       page,
@@ -692,7 +733,7 @@ export class SaleService {
       items: sale.items.map((item) => ({
         id: item.id,
         shopProductId: item.shopProductId,
-        product: item.shopProduct.product.name,
+        product: item.shopProduct?.product?.name ?? item.productName,
         quantity: item.quantity,
         unitPrice: item.unitPrice,
         total: item.total,
@@ -714,7 +755,13 @@ export class SaleService {
   // UPDATE SALE
   // ─────────────────────────────────────────────
   async update(id: string, dto: UpdateSaleDto, user: JwtPayload) {
-    const result: { id: string; shopId: string; totalAmount: number; paymentStatus: PaymentStatus; updatedAt: Date } = await this.dataSource.transaction(async (manager) => {
+    const result: {
+      id: string;
+      shopId: string;
+      totalAmount: number;
+      paymentStatus: PaymentStatus;
+      updatedAt: Date;
+    } = await this.dataSource.transaction(async (manager) => {
       const sale = (await manager.findOne(Sale, {
         where: { id },
         relations: { cashMovement: true },
@@ -765,57 +812,96 @@ export class SaleService {
         });
 
         for (const oldItem of oldItems) {
-          const product = await manager.findOne(ShopProduct, {
-            where: { id: oldItem.shopProductId },
-          });
+          const isOldPromotion = oldItem.shopProductId.startsWith('promo-');
+          if (!isOldPromotion) {
+            const product = await manager.findOne(ShopProduct, {
+              where: { id: oldItem.shopProductId },
+            });
 
-          if (product) {
-            product.stock = (product.stock ?? 0) + Number(oldItem.quantity);
-            await manager.save(product);
+            if (product) {
+              product.stock = (product.stock ?? 0) + Number(oldItem.quantity);
+              await manager.save(product);
+            }
           }
         }
 
         await manager.delete(SaleItem, { sale: { id: sale.id } });
 
-        // 4️⃣ Crear nuevos items
         for (const item of dto.items) {
-          const product = await manager.findOne(ShopProduct, {
-            where: { id: item.shopProductId, shopId: sale.shopId },
-          });
-
-          if (!product) {
-            throw new BadRequestException(
-              `Producto ${item.shopProductId} no encontrado`,
-            );
-          }
-
+          const isPromotion = item.shopProductId.startsWith('promo-');
           const quantity = Number(item.quantity);
-          const itemSubtotal = quantity * item.unitPrice;
-          const itemTax = item.taxRate ? itemSubtotal * item.taxRate : 0;
-          const itemDiscount = item.discount ?? 0;
-          const itemTotal = itemSubtotal - itemDiscount + itemTax;
+          const unitPrice = isPromotion
+            ? -Math.abs(Number(item.unitPrice))
+            : Number(item.unitPrice);
+          const itemSubtotal = quantity * unitPrice;
+          const itemTax = isPromotion
+            ? 0
+            : item.taxRate
+              ? itemSubtotal * item.taxRate
+              : 0;
+          const itemDiscount = isPromotion ? 0 : (item.discount ?? 0);
+        const itemTotal = isPromotion
+          ? itemSubtotal
+          : itemSubtotal - itemDiscount + itemTax;
 
+        if (!isPromotion) {
           subtotal += itemSubtotal;
           taxAmount += itemTax;
-          totalAmount += itemTotal;
+        }
+        totalAmount += itemTotal;
 
-          await manager.save(
-            manager.create(SaleItem, {
-              sale: { id: sale.id }, // ✅ JAMÁS saleId
-              shopProduct: { id: product.id },
-              quantity: item.quantity,
-              unitPrice: item.unitPrice,
-              subtotal: itemSubtotal,
-              discount: itemDiscount,
-              taxRate: item.taxRate ?? 0,
-              taxAmount: itemTax,
-              total: itemTotal,
-              priceWasModified: item.priceWasModified ?? false,
-            }),
-          );
+        if (isPromotion) {
+            await manager.save(
+              manager.create(SaleItem, {
+                sale: { id: sale.id },
+                shopProductId: item.shopProductId,
+                productName: item.productName ?? 'Promoción',
+                barcode: item.barcode ?? 'promo',
+                salePrice: unitPrice,
+                quantity: item.quantity,
+                unitPrice: unitPrice,
+                subtotal: itemSubtotal,
+                discount: itemDiscount,
+                taxRate: 0,
+                taxAmount: 0,
+                total: itemTotal,
+                priceWasModified: false,
+              }),
+            );
+          } else {
+            const product = await manager.findOne(ShopProduct, {
+              where: { id: item.shopProductId, shopId: sale.shopId },
+              relations: { product: true },
+            });
 
-          product.stock = (product.stock ?? 0) - quantity;
-          await manager.save(product);
+            if (!product) {
+              throw new BadRequestException(
+                `Producto ${item.shopProductId} no encontrado`,
+              );
+            }
+
+            await manager.save(
+              manager.create(SaleItem, {
+                sale: { id: sale.id },
+                shopProduct: { id: product.id },
+                shopProductId: product.id,
+                productName: product.product.name,
+                barcode: product.barcode,
+                salePrice: product.salePrice,
+                quantity: item.quantity,
+                unitPrice: item.unitPrice,
+                subtotal: itemSubtotal,
+                discount: itemDiscount,
+                taxRate: item.taxRate ?? 0,
+                taxAmount: itemTax,
+                total: itemTotal,
+                priceWasModified: item.priceWasModified ?? false,
+              }),
+            );
+
+            product.stock = (product.stock ?? 0) - quantity;
+            await manager.save(product);
+          }
         }
 
         sale.subtotal = subtotal;
@@ -841,16 +927,16 @@ export class SaleService {
           lock: { mode: 'pessimistic_write' },
         });
 
-      if (!customerShop) {
-        // Legacy sale without CustomerShop record — skip debt update
-        return {
-          id: sale.id,
-          shopId: sale.shopId,
-          totalAmount: sale.totalAmount,
-          paymentStatus: sale.paymentStatus,
-          updatedAt: new Date(),
-        };
-      }
+        if (!customerShop) {
+          // Legacy sale without CustomerShop record — skip debt update
+          return {
+            id: sale.id,
+            shopId: sale.shopId,
+            totalAmount: sale.totalAmount,
+            paymentStatus: sale.paymentStatus,
+            updatedAt: new Date(),
+          };
+        }
 
         // PENDING → PAID: collect payment, reduce debt, create cash movement
         if (
@@ -938,19 +1024,19 @@ export class SaleService {
         }
       }
 
-    // 7️⃣ Sync cash movement
-    if (sale.cashMovement && sale.paymentStatus === PaymentStatus.PAID) {
-      sale.cashMovement.amount = sale.totalAmount;
-      await manager.save(sale.cashMovement);
-    }
+      // 7️⃣ Sync cash movement
+      if (sale.cashMovement && sale.paymentStatus === PaymentStatus.PAID) {
+        sale.cashMovement.amount = sale.totalAmount;
+        await manager.save(sale.cashMovement);
+      }
 
-    return {
-      id: sale.id,
-      shopId: sale.shopId,
-      totalAmount: sale.totalAmount,
-      paymentStatus: sale.paymentStatus,
-      updatedAt: new Date(),
-    } as const;
+      return {
+        id: sale.id,
+        shopId: sale.shopId,
+        totalAmount: sale.totalAmount,
+        paymentStatus: sale.paymentStatus,
+        updatedAt: new Date(),
+      } as const;
     });
 
     this.realtimeGateway.emitToShop(
@@ -1137,7 +1223,7 @@ export class SaleService {
         );
       }
 
-    return { saleId: sale.id, shopId: sale.shopId };
+      return { saleId: sale.id, shopId: sale.shopId };
     });
 
     this.realtimeGateway.emitToShop(
@@ -1158,8 +1244,13 @@ export class SaleService {
 
       if (!sale) throw new BadRequestException('Venta no encontrada');
 
-      if (expectedAmount !== undefined && Number(sale.totalAmount) !== expectedAmount) {
-        throw new BadRequestException('Monto del pago no coincide con la venta');
+      if (
+        expectedAmount !== undefined &&
+        Number(sale.totalAmount) !== expectedAmount
+      ) {
+        throw new BadRequestException(
+          'Monto del pago no coincide con la venta',
+        );
       }
 
       if (sale.paymentStatus === PaymentStatus.PAID) {
@@ -1171,14 +1262,14 @@ export class SaleService {
         sale.employeeId!,
       );
 
-    if (!cashRegister) {
-      throw new BadRequestException(
-        'No hay caja abierta para registrar el pago',
-      );
-    }
+      if (!cashRegister) {
+        throw new BadRequestException(
+          'No hay caja abierta para registrar el pago',
+        );
+      }
 
-    sale.paymentStatus = PaymentStatus.PAID;
-    sale.status = SaleStatus.COMPLETED;
+      sale.paymentStatus = PaymentStatus.PAID;
+      sale.status = SaleStatus.COMPLETED;
 
       await manager.save(sale);
       if (!sale.employeeId) {
@@ -1221,7 +1312,9 @@ export class SaleService {
 
     if (user.role === UserRole.EMPLOYEE) {
       if (sale.employeeId !== user.id) {
-        throw new ForbiddenException('No tienes permisos para acceder a esta venta');
+        throw new ForbiddenException(
+          'No tienes permisos para acceder a esta venta',
+        );
       }
       return;
     }
