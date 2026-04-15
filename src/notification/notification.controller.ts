@@ -8,6 +8,8 @@ import {
   ParseUUIDPipe,
   Query,
   UseGuards,
+  ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { NotificationService } from './notification.service';
 import { GetNotificationsQueryDto } from './dto/get-notifications-query.dto';
@@ -16,12 +18,16 @@ import { BatchUpdatePreferencesDto } from './dto/batch-update-preferences.dto';
 import { JwtAuthGuard } from '@/auth/guards/jwt-auth.guard';
 import { GetUser } from '@/auth/decorators/get-user.decorators';
 import { NotificationType } from './entities/notification.entity';
-import { User } from '@/auth/entities/user.entity';
+import { User, UserRole } from '@/auth/entities/user.entity';
+import { ShopService } from '@/shop/shop.service';
 
 @Controller('notifications')
 @UseGuards(JwtAuthGuard)
 export class NotificationController {
-  constructor(private readonly notificationService: NotificationService) {}
+  constructor(
+    private readonly notificationService: NotificationService,
+    private readonly shopService: ShopService,
+  ) {}
 
   /**
    * GET /notifications
@@ -68,19 +74,34 @@ export class NotificationController {
 
   /** GET /notifications/preferences */
   @Get('preferences')
-  getPreferences(@GetUser() user: User) {
-    return this.notificationService.getUserPreferences(user.id);
+  async getPreferences(
+    @GetUser() user: User,
+    @Query('shopId') shopId: string,
+  ) {
+    if (!shopId) {
+      throw new BadRequestException('shopId es requerido');
+    }
+    await this.shopService.assertCanAccessShop(shopId, user);
+    return this.notificationService.getShopPreferences(shopId);
   }
 
   /** PATCH /notifications/preferences/:type */
   @Patch('preferences/:type')
-  updatePreference(
+  async updatePreference(
     @GetUser() user: User,
+    @Query('shopId') shopId: string,
     @Param('type', new ParseEnumPipe(NotificationType)) type: NotificationType,
     @Body() dto: UpdateNotificationPreferenceDto,
   ) {
-    return this.notificationService.updateUserPreference(
-      user.id,
+    if (!shopId) {
+      throw new BadRequestException('shopId es requerido');
+    }
+    if (user.role !== UserRole.OWNER) {
+      throw new ForbiddenException('Solo el propietario puede modificar las preferencias de notificación');
+    }
+    await this.shopService.assertCanAccessShop(shopId, user);
+    return this.notificationService.updateShopPreference(
+      shopId,
       type,
       dto.enabled,
       dto.threshold,
@@ -89,10 +110,18 @@ export class NotificationController {
 
   /** PATCH /notifications/preferences */
   @Patch('preferences')
-  batchUpdatePreferences(
+  async batchUpdatePreferences(
     @GetUser() user: User,
+    @Query('shopId') shopId: string,
     @Body() dto: BatchUpdatePreferencesDto,
   ) {
-    return this.notificationService.batchUpdateUserPreferences(user.id, dto.preferences);
+    if (!shopId) {
+      throw new BadRequestException('shopId es requerido');
+    }
+    if (user.role !== UserRole.OWNER) {
+      throw new ForbiddenException('Solo el propietario puede modificar las preferencias de notificación');
+    }
+    await this.shopService.assertCanAccessShop(shopId, user);
+    return this.notificationService.batchUpdateShopPreferences(shopId, dto.preferences);
   }
 }

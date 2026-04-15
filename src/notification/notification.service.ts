@@ -4,7 +4,7 @@ import { GetNotificationsQueryDto } from './dto/get-notifications-query.dto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, MoreThan, Repository } from 'typeorm';
 import { Notification, NotificationType } from './entities/notification.entity';
-import { UserNotificationPreference } from './entities/notification-preference.entity';
+import { ShopNotificationPreference } from './entities/notification-preference.entity';
 import { NotificationGateway } from './notification.gateway';
 
 /** Deduplication window: 24 hours in ms */
@@ -16,7 +16,7 @@ export interface PaginatedNotifications {
   page: number;
 }
 
-export interface UserPreference {
+export interface ShopPreference {
   type: NotificationType;
   enabled: boolean;
   threshold?: number | null;
@@ -29,8 +29,8 @@ export class NotificationService {
   constructor(
     @InjectRepository(Notification)
     private readonly notificationsRepository: Repository<Notification>,
-    @InjectRepository(UserNotificationPreference)
-    private readonly preferencesRepository: Repository<UserNotificationPreference>,
+    @InjectRepository(ShopNotificationPreference)
+    private readonly preferencesRepository: Repository<ShopNotificationPreference>,
     private readonly notificationGateway: NotificationGateway,
   ) {}
 
@@ -39,21 +39,23 @@ export class NotificationService {
     manager?: EntityManager,
   ): Promise<Notification | null> {
     const prefRepo = manager
-      ? manager.getRepository(UserNotificationPreference)
+      ? manager.getRepository(ShopNotificationPreference)
       : this.preferencesRepository;
 
     const notificationRepo = manager
       ? manager.getRepository(Notification)
       : this.notificationsRepository;
 
-    // Skip silently if the user has disabled this notification type
-    const preference = await prefRepo.findOne({
-      where: { userId: data.userId, type: data.type },
-      select: { enabled: true },
-    });
+    // Check shop-scoped preferences if shopId is provided
+    if (data.shopId) {
+      const preference = await prefRepo.findOne({
+        where: { shopId: data.shopId, type: data.type },
+        select: { enabled: true },
+      });
 
-    if (preference && !preference.enabled) {
-      return null;
+      if (preference && !preference.enabled) {
+        return null;
+      }
     }
 
     // Deduplication: reject if the same key was created within the last 24 h.
@@ -236,9 +238,9 @@ export class NotificationService {
     }
   }
 
-  async getUserPreferences(userId: string): Promise<UserPreference[]> {
+  async getShopPreferences(shopId: string): Promise<ShopPreference[]> {
     const existing = await this.preferencesRepository.find({
-      where: { userId },
+      where: { shopId },
       select: { type: true, enabled: true, threshold: true },
     });
 
@@ -247,7 +249,7 @@ export class NotificationService {
     );
     const allTypes = Object.values(NotificationType);
 
-    // ?? true: if the user has no saved preference for a type, default to enabled.
+    // ?? true: if the shop has no saved preference for a type, default to enabled.
     // This also correctly narrows the return type to boolean (not boolean | undefined).
     return allTypes.map((type) => ({
       type,
@@ -261,19 +263,19 @@ export class NotificationService {
    *
    * The previous read-modify-write (findOne → save) had a race condition:
    * two concurrent requests both observe no existing row and both try to
-   * INSERT → unique constraint error on (userId, type).
+   * INSERT → unique constraint error on (shopId, type).
    *
    * TypeORM's upsert() generates an INSERT … ON CONFLICT DO UPDATE, which
    * is a single atomic DB operation with no race.
    */
-  async updateUserPreference(
-    userId: string,
+  async updateShopPreference(
+    shopId: string,
     type: NotificationType,
     enabled: boolean,
     threshold?: number | null,
-  ): Promise<UserPreference> {
-    const data: { userId: string; type: NotificationType; enabled: boolean; threshold?: number | null } = {
-      userId,
+  ): Promise<ShopPreference> {
+    const data: { shopId: string; type: NotificationType; enabled: boolean; threshold?: number | null } = {
+      shopId,
       type,
       enabled,
     };
@@ -283,7 +285,7 @@ export class NotificationService {
     }
 
     await this.preferencesRepository.upsert(data, {
-      conflictPaths: ['userId', 'type'],
+      conflictPaths: ['shopId', 'type'],
       skipUpdateIfNoValuesChanged: true,
     });
 
@@ -291,15 +293,15 @@ export class NotificationService {
     return { type, enabled, threshold: threshold ?? null };
   }
 
-  async batchUpdateUserPreferences(
-    userId: string,
+  async batchUpdateShopPreferences(
+    shopId: string,
     preferences: Array<{ type: NotificationType; enabled: boolean; threshold?: number | null }>,
-  ): Promise<UserPreference[]> {
-    const results: UserPreference[] = [];
+  ): Promise<ShopPreference[]> {
+    const results: ShopPreference[] = [];
 
     for (const pref of preferences) {
-      const data: { userId: string; type: NotificationType; enabled: boolean; threshold?: number | null } = {
-        userId,
+      const data: { shopId: string; type: NotificationType; enabled: boolean; threshold?: number | null } = {
+        shopId,
         type: pref.type,
         enabled: pref.enabled,
       };
@@ -309,7 +311,7 @@ export class NotificationService {
       }
 
       await this.preferencesRepository.upsert(data, {
-        conflictPaths: ['userId', 'type'],
+        conflictPaths: ['shopId', 'type'],
         skipUpdateIfNoValuesChanged: true,
       });
 

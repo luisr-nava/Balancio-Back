@@ -70,8 +70,8 @@ export class SaleService {
     private readonly customerAccountService: CustomerAccountService,
     private readonly realtimeGateway: RealtimeGateway,
   ) {}
-  async create(dto: CreateSaleDto, user: JwtPayload) {
-    return this.dataSource.transaction(async (manager) => {
+async create(dto: CreateSaleDto, user: JwtPayload) {
+	const result = await this.dataSource.transaction(async (manager) => {
       if (!dto.items || dto.items.length === 0) {
         throw new BadRequestException('La venta debe tener al menos un item');
       }
@@ -560,17 +560,26 @@ export class SaleService {
         receipt.paperSize,
       ).generate(receipt.snapshot);
 
-      const receiptBase64 = pdfBuffer.toString('base64');
+	const receiptBase64 = pdfBuffer.toString('base64');
 
-      return {
-        saleId: sale.id,
-        totalAmount: sale.totalAmount,
-        paymentStatus: sale.paymentStatus,
-        saleDate: sale.saleDate,
-        receipt: receiptBase64,
-      };
-    });
-  }
+	return {
+		saleId: sale.id,
+		shopId: dto.shopId,
+		totalAmount: sale.totalAmount,
+		paymentStatus: sale.paymentStatus,
+		saleDate: sale.saleDate,
+		receipt: receiptBase64,
+	};
+});
+
+	this.realtimeGateway.emitToShop(
+	dto.shopId,
+	RealtimeEvents.SALE_CREATED,
+	{ saleId: result.saleId, shopId: dto.shopId },
+	);
+
+	return result;
+}
 
   async getAll(
     filters: {

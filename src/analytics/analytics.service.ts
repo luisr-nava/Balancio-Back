@@ -584,7 +584,8 @@ export class AnalyticsService {
   }
 
   private normalizeDate(date: Date): string {
-    return date.toISOString().split('T')[0];
+    const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+    return local.toISOString().split('T')[0];
   }
 
   private async buildSummary(shopId: string, startDate: Date, endDate: Date) {

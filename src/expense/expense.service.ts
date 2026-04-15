@@ -191,6 +191,7 @@ export class ExpenseService {
     // 4️⃣ Query paginada
     const [expenses, total] = await this.expenseRepo.findAndCount({
       where,
+      relations: { paymentMethod: true },
       order: {
         date: 'DESC',
       },
@@ -203,6 +204,7 @@ export class ExpenseService {
         id: expense.id,
         shopId: expense.shopId,
         paymentMethodId: expense.paymentMethodId,
+        paymentMethod: expense.paymentMethod,
         amount: expense.amount,
         description: expense.description,
         category: expense.category,

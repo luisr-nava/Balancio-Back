@@ -182,6 +182,7 @@ export class IncomeService {
 
     const [incomes, total] = await this.incomeRepo.findAndCount({
       where,
+      relations: { paymentMethod: true },
       order: { date: 'DESC' },
       skip,
       take: limit,

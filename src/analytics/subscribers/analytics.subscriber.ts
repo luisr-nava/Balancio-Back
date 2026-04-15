@@ -17,7 +17,8 @@ import { SaleReturn } from '@/sale-return/entities/sale-return.entity';
 import { SaleReturnItem } from '@/sale-return/entities/sale-return-item.entity';
 
 function normalizeDate(date: Date): string {
-  return date.toISOString().split('T')[0];
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return local.toISOString().split('T')[0];
 }
 
 async function applyDelta(

@@ -7,20 +7,20 @@ import {
   UpdateDateColumn,
   Unique,
 } from 'typeorm';
-import { User } from '@/auth/entities/user.entity';
+import { Shop } from '@/shop/entities/shop.entity';
 import { NotificationType } from '@/notification/entities/notification.entity';
 
-@Entity('user_notification_preferences')
-@Unique(['userId', 'type'])
-export class UserNotificationPreference {
+@Entity('shop_notification_preferences')
+@Unique(['shopId', 'type'])
+export class ShopNotificationPreference {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
   @Column({ type: 'uuid' })
-  userId: string;
+  shopId: string;
 
-  @ManyToOne(() => User, { onDelete: 'CASCADE' })
-  user: User;
+  @ManyToOne(() => Shop, { onDelete: 'CASCADE' })
+  shop: Shop;
 
   @Column({
     type: 'enum',
