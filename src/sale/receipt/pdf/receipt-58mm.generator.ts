@@ -40,6 +40,8 @@ export class Receipt58mmGenerator implements ReceiptGenerator {
       doc.text(snapshot.shop.address, { align: 'center' });
     if (snapshot.shop.phone)
       doc.text(`Tel: ${snapshot.shop.phone}`, { align: 'center' });
+    if (snapshot.shop.taxId)
+      doc.text(snapshot.shop.taxId, { align: 'center' });
 
     doc.moveDown();
     doc.text(`Date: ${snapshot.saleDate.toLocaleString(locale)}`);
@@ -60,6 +62,19 @@ export class Receipt58mmGenerator implements ReceiptGenerator {
     doc.text(`TOTAL: ${formatMoney(snapshot.totals.total)}`, {
       align: 'right',
     });
+
+    if (snapshot.customFields && snapshot.customFields.length > 0) {
+      doc.moveDown();
+      doc.text('------------------------------');
+      snapshot.customFields.forEach((field) => {
+        doc.text(`${field.label}: ${field.value}`, { align: 'center' });
+      });
+    }
+
+    if (snapshot.footerMessage) {
+      doc.moveDown();
+      doc.text(snapshot.footerMessage, { align: 'center' });
+    }
 
     return this.buildBuffer(doc);
   }

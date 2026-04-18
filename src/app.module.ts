@@ -38,6 +38,7 @@ import { HealthModule } from './health/health.module';
 import { PromotionModule } from './promotion/promotion.module';
 import { CustomerAccountModule } from './customer-account/customer-account.module';
 import { DashboardVisibilityModule } from './dashboard-visibility/dashboard-visibility.module';
+import { TicketSettingsModule } from './ticket-settings/ticket-settings.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { CustomThrottlerGuard } from './common/guards/custom-throttler.guard';
@@ -97,10 +98,11 @@ import { CustomThrottlerGuard } from './common/guards/custom-throttler.guard';
     SettingsModule,
     HealthModule,
   PromotionModule,
-  CustomerAccountModule,
-  DashboardVisibilityModule,
-  ErrorLogModule,
-],
+    CustomerAccountModule,
+    DashboardVisibilityModule,
+    TicketSettingsModule,
+    ErrorLogModule,
+  ],
   controllers: [],
   providers: [
     { provide: APP_FILTER, useClass: HttpExceptionFilter },

@@ -9,6 +9,9 @@ export interface ReceiptShopSnapshot {
   name: string;
   address?: string | null;
   phone?: string | null;
+  taxId?: string | null;
+  email?: string | null;
+  website?: string | null;
   currency: string;
   timezone: string;
   countryCode: string;
@@ -19,6 +22,8 @@ export interface ReceiptItemSnapshot {
   quantity: number;
   unitPrice: number;
   total: number;
+  productId?: string | null;
+  barcode?: string | null;
 }
 
 export interface ReceiptTotalsSnapshot {
@@ -36,6 +41,11 @@ export interface ReceiptMetadataSnapshot {
   generatedAt: Date;
 }
 
+export interface CustomFieldSnapshot {
+  label: string;
+  value: string;
+}
+
 export interface ReceiptSnapshot {
   shop: ReceiptShopSnapshot;
   saleId: string;
@@ -44,4 +54,6 @@ export interface ReceiptSnapshot {
   totals: ReceiptTotalsSnapshot;
   payment: ReceiptPaymentSnapshot;
   metadata: ReceiptMetadataSnapshot;
+  footerMessage?: string | null;
+  customFields: CustomFieldSnapshot[];
 }

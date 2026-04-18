@@ -218,6 +218,12 @@ export class Receipt80mmGenerator implements ReceiptGenerator {
       doc.text(snapshot.shop.address, { align: 'center' });
     if (snapshot.shop.phone)
       doc.text(`Tel: ${snapshot.shop.phone}`, { align: 'center' });
+    if (snapshot.shop.taxId)
+      doc.text(snapshot.shop.taxId, { align: 'center' });
+    if (snapshot.shop.email)
+      doc.text(snapshot.shop.email, { align: 'center' });
+    if (snapshot.shop.website)
+      doc.text(snapshot.shop.website, { align: 'center' });
 
     doc.moveDown();
     doc.text(`Date: ${snapshot.saleDate.toLocaleString(locale)}`);
@@ -274,6 +280,24 @@ export class Receipt80mmGenerator implements ReceiptGenerator {
     doc.fontSize(11).font('Courier-Bold');
     doc.text('TOTAL:', margin, y);
     doc.text(totalText, margin + usable - doc.widthOfString(totalText), y);
+
+    doc.fontSize(10).font('Courier');
+
+    // CUSTOM FIELDS
+    if (snapshot.customFields && snapshot.customFields.length > 0) {
+      doc.moveDown();
+      doc.text(line, margin);
+      doc.moveDown(0.5);
+      snapshot.customFields.forEach((field) => {
+        doc.text(`${field.label}: ${field.value}`, { align: 'center' });
+      });
+    }
+
+    // FOOTER MESSAGE
+    if (snapshot.footerMessage) {
+      doc.moveDown();
+      doc.text(snapshot.footerMessage, { align: 'center' });
+    }
 
     return this.buildBuffer(doc);
   }

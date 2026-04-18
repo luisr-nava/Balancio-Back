@@ -7,12 +7,14 @@ import { Shop } from '@/shop/entities/shop.entity';
 import { ReceiptPaperSize, ReceiptSnapshot } from './types/receipt.types';
 import { ReceiptSnapshotBuilder } from './builders/receipt-snapshot.builder';
 import { ReceiptPdfFactory } from './pdf/receipt-pdf.factory';
+import { TicketSettingsService } from '@/ticket-settings/ticket-settings.service';
 
 @Injectable()
 export class ReceiptService {
   constructor(
     @InjectRepository(SaleReceipt)
     private readonly receiptRepo: Repository<SaleReceipt>,
+    private readonly ticketSettingsService: TicketSettingsService,
   ) {}
   async createReceipt(
     manager: EntityManager,
@@ -21,15 +23,16 @@ export class ReceiptService {
     receiptNumber: number | bigint,
     paperSize?: ReceiptPaperSize,
   ): Promise<SaleReceipt> {
-    const snapshot: ReceiptSnapshot = ReceiptSnapshotBuilder.build(sale, shop);
+    const ticketSettings = await this.ticketSettingsService.getSettingsByShopId(shop.id);
+    const effectivePaperSize = paperSize ?? ticketSettings?.paperSize ?? ReceiptPaperSize.MM_80;
+    const snapshot: ReceiptSnapshot = ReceiptSnapshotBuilder.build(sale, shop, ticketSettings);
 
-    // 🔥 usar manager, no receiptRepo
     const receipt = manager.create(SaleReceipt, {
       saleId: sale.id,
       shopId: shop.id,
       snapshot,
       receiptNumber: receiptNumber.toString(),
-      paperSize,
+      paperSize: effectivePaperSize,
     });
 
     return manager.save(SaleReceipt, receipt);

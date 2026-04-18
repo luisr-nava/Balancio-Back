@@ -34,6 +34,12 @@ export class DashboardVisibilityService {
     shopId: string,
     config: DashboardVisibilityConfig,
   ): Promise<DashboardVisibilityConfig> {
+    const enforcedConfig: DashboardVisibilityConfig = {
+      OWNER: { ...config.OWNER, cash: true },
+      MANAGER: { ...config.MANAGER, cash: true },
+      EMPLOYEE: { ...config.EMPLOYEE, cash: true },
+    };
+
     let visibility = await this.visibilityRepository.findOne({
       where: { shopId },
     });
@@ -41,10 +47,10 @@ export class DashboardVisibilityService {
     if (!visibility) {
       visibility = this.visibilityRepository.create({
         shopId,
-        config,
+        config: enforcedConfig,
       });
     } else {
-      visibility.config = config;
+      visibility.config = enforcedConfig;
     }
 
     await this.visibilityRepository.save(visibility);
