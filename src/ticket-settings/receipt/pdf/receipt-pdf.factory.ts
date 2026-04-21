@@ -18,8 +18,6 @@ export class ReceiptPdfFactory {
         return new ReceiptA4Generator();
 
       default:
-        // Esto nunca debería pasar porque ReceiptPaperSize está tipado,
-        // pero lo dejamos por seguridad futura.
         throw new Error(`Unsupported paper size: ${paperSize}`);
     }
   }

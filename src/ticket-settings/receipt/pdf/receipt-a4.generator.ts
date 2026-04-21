@@ -40,7 +40,7 @@ export class ReceiptA4Generator implements ReceiptGenerator {
       doc.text(snapshot.shop.website, { align: 'center' });
     doc.moveDown(2);
 
-    doc.fontSize(12).text(`Date: ${snapshot.saleDate.toLocaleString(locale)}`);
+    doc.fontSize(12).text(`Fecha: ${snapshot.saleDate.toLocaleString(locale)}`);
     doc.moveDown();
 
     snapshot.items.forEach((item) => {
@@ -54,27 +54,26 @@ export class ReceiptA4Generator implements ReceiptGenerator {
     });
 
     doc.moveDown();
-    doc.text(`Subtotal: ${formatMoney(snapshot.totals.subtotal)}`, {
-      align: 'right',
-    });
-    doc.text(`Tax: ${formatMoney(snapshot.totals.tax)}`, { align: 'right' });
-    doc.text(`TOTAL: ${formatMoney(snapshot.totals.total)}`, {
-      align: 'right',
-    });
+doc.text(`Subtotal: ${formatMoney(snapshot.totals.subtotal)}`, {
+    align: 'right',
+  });
+  doc.text(`TOTAL: ${formatMoney(snapshot.totals.total)}`, {
+    align: 'right',
+  });
 
-    if (snapshot.customFields && snapshot.customFields.length > 0) {
-      doc.moveDown(2);
-      doc.fontSize(10);
-      doc.text('--- Additional Info ---', { align: 'center' });
-      snapshot.customFields.forEach((field) => {
-        doc.text(`${field.label}: ${field.value}`, { align: 'center' });
-      });
-    }
+if (snapshot.customFields && snapshot.customFields.length > 0) {
+    doc.moveDown();
+    doc.fontSize(10);
+    doc.text('--- Additional Info ---', { align: 'center' });
+    snapshot.customFields.forEach((field) => {
+      doc.text(`${field.label}: ${field.value}`, { align: 'center' });
+    });
+  }
 
-    if (snapshot.footerMessage) {
-      doc.moveDown(2);
-      doc.fontSize(10).text(snapshot.footerMessage, { align: 'center' });
-    }
+  if (snapshot.footerMessage) {
+    doc.moveDown();
+    doc.fontSize(10).text(snapshot.footerMessage, { align: 'center' });
+  }
 
     return this.buildBuffer(doc);
   }

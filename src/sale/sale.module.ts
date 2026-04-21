@@ -14,13 +14,14 @@ import { SaleReturn } from '@/sale-return/entities/sale-return.entity';
 import { SaleReturnItem } from '@/sale-return/entities/sale-return-item.entity';
 import { MercadoPagoService } from './mercado-pago.service';
 import { NotificationModule } from '@/notification/notification.module';
-import { ReceiptModule } from './receipt/receipt.module';
+import { TicketSettingsModule } from '@/ticket-settings/ticket-settings.module';
 import { CustomerAccountMovement } from '@/customer-account/entities/customer-account-movement.entity';
 import { CustomerShop } from '@/customer-account/entities/customer-shop.entity';
 import { CustomerAccountModule } from '@/customer-account/customer-account.module';
 import { RealtimeModule } from '@/realtime/realtime.module';
 import { CashMovementModule } from '@/cash-movement/cash-movement.module';
 import { UserShop } from '@/auth/entities/user-shop.entity';
+import { SaleReceipt } from '@/ticket-settings/receipt/entities/receipt.entity';
 
 @Module({
   imports: [
@@ -36,13 +37,14 @@ import { UserShop } from '@/auth/entities/user-shop.entity';
       CustomerAccountMovement,
       CustomerShop,
       UserShop,
+      SaleReceipt,
     ]),
     CashRegisterModule, // 👈 obligatorio para validar caja abierta/cerrada
     CashMovementModule,
     CustomerAccountModule,
     SaleReturnModule,
     NotificationModule,
-    ReceiptModule,
+    TicketSettingsModule,
     RealtimeModule,
   ],
   controllers: [SaleController],

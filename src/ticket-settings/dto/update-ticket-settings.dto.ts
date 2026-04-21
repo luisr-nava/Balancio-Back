@@ -1,6 +1,6 @@
-import { IsOptional, IsString, IsArray, ValidateNested, IsEnum } from 'class-validator';
+import { IsOptional, IsString, IsArray, ValidateNested, IsEnum, IsBoolean } from 'class-validator';
 import { Type } from 'class-transformer';
-import { ReceiptPaperSize } from '@/sale/receipt/types/receipt.types';
+import { ReceiptPaperSize } from '../receipt/types/receipt.types';
 
 class CustomFieldDto {
   @IsString()
@@ -24,12 +24,24 @@ export class UpdateTicketSettingsDto {
   phone?: string;
 
   @IsOptional()
+  @IsBoolean()
+  showPhone?: boolean;
+
+  @IsOptional()
   @IsString()
   email?: string;
 
   @IsOptional()
+  @IsBoolean()
+  showEmail?: boolean;
+
+  @IsOptional()
   @IsString()
   website?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  showWebsite?: boolean;
 
   @IsOptional()
   @IsString()

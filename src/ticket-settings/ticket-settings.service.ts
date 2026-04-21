@@ -1,13 +1,19 @@
 import { Injectable, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { ShopTicketSettings } from './entities/shop-ticket-settings.entity';
+import { ShopTicketSettings, TicketLayout } from './entities/shop-ticket-settings.entity';
 import { User, UserRole } from '@/auth/entities/user.entity';
 import { ShopService } from '@/shop/shop.service';
 import { UpdateTicketSettingsDto } from './dto/update-ticket-settings.dto';
 
 @Injectable()
 export class TicketSettingsService {
+  private static readonly DEFAULT_LAYOUT: TicketLayout = {
+    items: {
+      mode: 'two-lines',
+      showUnitPrice: true,
+    },
+  };
   constructor(
     @InjectRepository(ShopTicketSettings)
     private readonly settingsRepository: Repository<ShopTicketSettings>,
@@ -32,9 +38,15 @@ export class TicketSettingsService {
   }
 
   async getSettingsByShopId(shopId: string): Promise<ShopTicketSettings | null> {
-    return this.settingsRepository.findOne({
+    const settings = await this.settingsRepository.findOne({
       where: { shopId },
     });
+
+    if (settings && !settings.layout) {
+      settings.layout = TicketSettingsService.DEFAULT_LAYOUT;
+    }
+
+    return settings;
   }
 
   async updateSettings(

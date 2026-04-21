@@ -8,11 +8,20 @@ import {
   Unique,
 } from 'typeorm';
 import { Shop } from '@/shop/entities/shop.entity';
-import { ReceiptPaperSize } from '@/sale/receipt/types/receipt.types';
+import { ReceiptPaperSize } from '../receipt/types/receipt.types';
 
 export type CustomField = {
   label: string;
   value: string;
+};
+
+export type ItemLayoutMode = 'two-lines' | 'single-line';
+
+export type TicketLayout = {
+  items?: {
+    mode?: ItemLayoutMode;
+    showUnitPrice?: boolean;
+  };
 };
 
 @Entity('shop_ticket_settings')
@@ -36,11 +45,20 @@ export class ShopTicketSettings {
   @Column({ type: 'varchar', nullable: true })
   phone?: string;
 
+  @Column({ type: 'boolean', default: true })
+  showPhone: boolean;
+
   @Column({ type: 'varchar', nullable: true })
   email?: string;
 
+  @Column({ type: 'boolean', default: true })
+  showEmail: boolean;
+
   @Column({ type: 'varchar', nullable: true })
   website?: string;
+
+  @Column({ type: 'boolean', default: true })
+  showWebsite: boolean;
 
   @Column({ type: 'varchar', nullable: true })
   taxId?: string;
@@ -58,6 +76,9 @@ export class ShopTicketSettings {
     nullable: true,
   })
   paperSize?: ReceiptPaperSize;
+
+  @Column({ type: 'jsonb', nullable: true })
+  layout?: TicketLayout;
 
   @CreateDateColumn()
   createdAt: Date;

@@ -32,7 +32,7 @@ import { PrintModule } from './product/print/print.module';
 import { CashMovementModule } from './cash-movement/cash-movement.module';
 import { CashReportModule } from './cash-report/cash-report.module';
 import { PaymentModule } from './payment/payment.module';
-import { ReceiptModule } from './sale/receipt/receipt.module';
+
 import { SettingsModule } from './settings/settings.module';
 import { HealthModule } from './health/health.module';
 import { PromotionModule } from './promotion/promotion.module';
@@ -94,7 +94,6 @@ import { CustomThrottlerGuard } from './common/guards/custom-throttler.guard';
     CashMovementModule,
     CashReportModule,
     PaymentModule,
-    ReceiptModule,
     SettingsModule,
     HealthModule,
   PromotionModule,

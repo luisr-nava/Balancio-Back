@@ -1,3 +1,5 @@
+import { TicketLayout } from '../../entities/shop-ticket-settings.entity';
+
 export enum ReceiptPaperSize {
   MM_58 = '58mm',
   MM_80 = '80mm',
@@ -56,4 +58,8 @@ export interface ReceiptSnapshot {
   metadata: ReceiptMetadataSnapshot;
   footerMessage?: string | null;
   customFields: CustomFieldSnapshot[];
+  showPhone?: boolean;
+  showEmail?: boolean;
+  showWebsite?: boolean;
+  layout?: TicketLayout;
 }

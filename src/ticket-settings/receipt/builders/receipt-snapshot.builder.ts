@@ -1,7 +1,7 @@
 import { ReceiptSnapshot } from '../types/receipt.types';
-import { Sale } from '../../entities/sale.entity';
+import { Sale } from '@/sale/entities/sale.entity';
 import { Shop } from '@/shop/entities/shop.entity';
-import { ShopTicketSettings } from '@/ticket-settings/entities/shop-ticket-settings.entity';
+import { ShopTicketSettings } from '../../entities/shop-ticket-settings.entity';
 
 export class ReceiptSnapshotBuilder {
   static build(
@@ -31,11 +31,11 @@ export class ReceiptSnapshotBuilder {
         productId: i.shopProductId ?? null,
         barcode: i.barcode ?? null,
       })),
-totals: {
-      subtotal: Number(sale.subtotal ?? 0),
-      tax: Number(sale.taxAmount ?? 0),
-      total: Number(sale.totalAmount ?? 0),
-    },
+      totals: {
+        subtotal: Number(sale.subtotal ?? 0),
+        tax: Number(sale.taxAmount ?? 0),
+        total: Number(sale.totalAmount ?? 0),
+      },
       payment: {
         status: sale.paymentStatus,
       },
@@ -47,6 +47,10 @@ totals: {
       customFields: (ticketSettings?.customFields ?? []).filter(
         (f) => f.label?.trim() && f.value?.trim(),
       ),
+      showPhone: ticketSettings?.showPhone ?? true,
+      showEmail: ticketSettings?.showEmail ?? true,
+      showWebsite: ticketSettings?.showWebsite ?? true,
+      layout: ticketSettings?.layout,
     };
   }
 }

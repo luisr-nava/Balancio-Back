@@ -34,9 +34,9 @@ import {
 import { formatNotification } from '@/notification/notification-formatter';
 import { User, UserRole } from '@/auth/entities/user.entity';
 import { UserShop } from '@/auth/entities/user-shop.entity';
-import { ReceiptService } from './receipt/receipt.service';
+import { TicketReceiptService } from '@/ticket-settings/receipt/receipt.service';
 import { Shop } from '@/shop/entities/shop.entity';
-import { ReceiptPdfFactory } from './receipt/pdf/receipt-pdf.factory';
+
 import {
   CustomerAccountMovement,
   CustomerAccountMovementType,
@@ -44,6 +44,7 @@ import {
 import { CustomerShop } from '@/customer-account/entities/customer-shop.entity';
 import { CustomerAccountService } from '@/customer-account/customer-account.service';
 import { RealtimeEvents, RealtimeGateway } from '@/realtime/realtime.gateway';
+import { SaleReceipt } from '@/ticket-settings/receipt/entities/receipt.entity';
 
 @Injectable()
 export class SaleService {
@@ -63,10 +64,12 @@ export class SaleService {
     private readonly saleItemHistoryRepo: Repository<SaleItemHistory>,
     @InjectRepository(UserShop)
     private readonly userShopRepo: Repository<UserShop>,
+    @InjectRepository(SaleReceipt)
+    private readonly saleReceiptRepo: Repository<SaleReceipt>,
     private readonly cashRegisterService: CashRegisterService,
     private readonly mercadoPagoService: MercadoPagoService,
     private readonly notificationService: NotificationService,
-    private readonly receiptService: ReceiptService,
+    private readonly ticketReceiptService: TicketReceiptService,
     private readonly customerAccountService: CustomerAccountService,
     private readonly realtimeGateway: RealtimeGateway,
   ) {}
@@ -548,17 +551,14 @@ async create(dto: CreateSaleDto, user: JwtPayload) {
         throw new BadRequestException('Sale not found after creation');
       }
 
-      const receipt = await this.receiptService.createReceipt(
-        manager,
-        saleWithItems,
-        shop,
-        receiptNumber,
-        dto.paperSize,
-      );
+    const receipt = await this.ticketReceiptService.createReceipt(
+      manager,
+      saleWithItems,
+      shop,
+      receiptNumber,
+    );
 
-      const pdfBuffer = await ReceiptPdfFactory.create(
-        receipt.paperSize,
-      ).generate(receipt.snapshot);
+    const pdfBuffer = await this.ticketReceiptService.generatePdfFromReceipt(receipt);
 
 	const receiptBase64 = pdfBuffer.toString('base64');
 
@@ -665,9 +665,20 @@ async create(dto: CreateSaleDto, user: JwtPayload) {
       take: limit,
     });
 
+    const saleIds = sales.map((s) => s.id);
+    const receipts = saleIds.length
+      ? await this.saleReceiptRepo.find({
+          where: { saleId: In(saleIds) },
+          select: ['id', 'saleId'],
+        })
+      : [];
+    const receiptBySaleId = new Map(receipts.map((r) => [r.saleId, r.id]));
+
     return {
       data: sales.map((sale) => ({
         id: sale.id,
+        shopId: sale.shopId,
+        employeeId: sale.employeeId,
         shop: sale.shop.name,
         customer: sale.customer?.fullName ?? null,
         paymentMethod: sale.paymentMethod.name,
@@ -699,6 +710,7 @@ async create(dto: CreateSaleDto, user: JwtPayload) {
         status: sale.status,
         saleDate: sale.saleDate,
         notes: sale.notes,
+        receiptId: receiptBySaleId.get(sale.id) ?? null,
       })),
       total,
       page,
@@ -731,6 +743,11 @@ async create(dto: CreateSaleDto, user: JwtPayload) {
 
     await this.assertSaleAccess(sale, user);
 
+    const receipt = await this.saleReceiptRepo.findOne({
+      where: { saleId: sale.id },
+      select: ['id'],
+    });
+
     return {
       id: sale.id,
       shopId: sale.shopId,
@@ -755,6 +772,7 @@ async create(dto: CreateSaleDto, user: JwtPayload) {
       status: sale.status,
       saleDate: sale.saleDate,
       notes: sale.notes,
+      receiptId: receipt?.id ?? null,
     };
   }
 
