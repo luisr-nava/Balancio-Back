@@ -35,6 +35,8 @@ import { formatNotification } from '@/notification/notification-formatter';
 import { User, UserRole } from '@/auth/entities/user.entity';
 import { UserShop } from '@/auth/entities/user-shop.entity';
 import { TicketReceiptService } from '@/ticket-settings/receipt/receipt.service';
+import { TicketSettingsService } from '@/ticket-settings/ticket-settings.service';
+import { TicketConfigurationStatus } from '@/ticket-settings/entities/shop-ticket-settings.entity';
 import { Shop } from '@/shop/entities/shop.entity';
 
 import {
@@ -69,12 +71,17 @@ export class SaleService {
     private readonly cashRegisterService: CashRegisterService,
     private readonly mercadoPagoService: MercadoPagoService,
     private readonly notificationService: NotificationService,
-    private readonly ticketReceiptService: TicketReceiptService,
-    private readonly customerAccountService: CustomerAccountService,
+  private readonly ticketReceiptService: TicketReceiptService,
+  private readonly ticketSettingsService: TicketSettingsService,
+  private readonly customerAccountService: CustomerAccountService,
     private readonly realtimeGateway: RealtimeGateway,
   ) {}
-async create(dto: CreateSaleDto, user: JwtPayload) {
-	const result = await this.dataSource.transaction(async (manager) => {
+  async create(dto: CreateSaleDto, user: JwtPayload) {
+    const ticketSettings = await this.ticketSettingsService.getSettingsByShopId(dto.shopId);
+    const ticketsEnabled = ticketSettings?.ticketsEnabled === true;
+    const ticketsReady = ticketsEnabled && ticketSettings?.configurationStatus === TicketConfigurationStatus.READY;
+
+    const result = await this.dataSource.transaction(async (manager) => {
       if (!dto.items || dto.items.length === 0) {
         throw new BadRequestException('La venta debe tener al menos un item');
       }
@@ -506,10 +513,11 @@ async create(dto: CreateSaleDto, user: JwtPayload) {
         );
       }
 
-      // 🔒 Generar Receipt DESPUÉS de tener los items creados
+    // 🔒 Generar Receipt DESPUÉS de tener los items creados
 
-      // 🔁 Recargar la venta con relaciones
+    let receiptBase64: string | null = null;
 
+    if (ticketsReady) {
       const shop = await manager.findOne(Shop, {
         where: { id: dto.shopId },
         lock: { mode: 'pessimistic_write' },
@@ -535,7 +543,6 @@ async create(dto: CreateSaleDto, user: JwtPayload) {
       });
       const receiptNumber = updatedShop!.receiptSequence - 1;
 
-      // 🔁 Recargar venta con items reales
       const saleWithItems = await manager.findOne(Sale, {
         where: { id: sale.id },
         relations: {
@@ -551,25 +558,25 @@ async create(dto: CreateSaleDto, user: JwtPayload) {
         throw new BadRequestException('Sale not found after creation');
       }
 
-    const receipt = await this.ticketReceiptService.createReceipt(
-      manager,
-      saleWithItems,
-      shop,
-      receiptNumber,
-    );
+      const receipt = await this.ticketReceiptService.createReceipt(
+        manager,
+        saleWithItems,
+        shop,
+        receiptNumber,
+      );
 
-    const pdfBuffer = await this.ticketReceiptService.generatePdfFromReceipt(receipt);
+      const pdfBuffer = await this.ticketReceiptService.generatePdfFromReceipt(receipt);
+      receiptBase64 = pdfBuffer.toString('base64');
+    }
 
-	const receiptBase64 = pdfBuffer.toString('base64');
-
-	return {
-		saleId: sale.id,
-		shopId: dto.shopId,
-		totalAmount: sale.totalAmount,
-		paymentStatus: sale.paymentStatus,
-		saleDate: sale.saleDate,
-		receipt: receiptBase64,
-	};
+    return {
+      saleId: sale.id,
+      shopId: dto.shopId,
+      totalAmount: sale.totalAmount,
+      paymentStatus: sale.paymentStatus,
+      saleDate: sale.saleDate,
+      receipt: receiptBase64,
+    };
 });
 
 	this.realtimeGateway.emitToShop(

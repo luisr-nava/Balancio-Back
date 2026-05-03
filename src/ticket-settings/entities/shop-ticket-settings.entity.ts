@@ -10,6 +10,12 @@ import {
 import { Shop } from '@/shop/entities/shop.entity';
 import { ReceiptPaperSize } from '../receipt/types/receipt.types';
 
+export enum TicketConfigurationStatus {
+  NOT_STARTED = 'not_started',
+  PARTIAL = 'partial',
+  READY = 'ready',
+}
+
 export type CustomField = {
   label: string;
   value: string;
@@ -79,6 +85,17 @@ export class ShopTicketSettings {
 
   @Column({ type: 'jsonb', nullable: true })
   layout?: TicketLayout;
+
+  @Column({ type: 'boolean', default: false })
+  ticketsEnabled: boolean;
+
+  @Column({
+    type: 'enum',
+    enum: TicketConfigurationStatus,
+    enumName: 'ticket_configuration_status',
+    default: TicketConfigurationStatus.NOT_STARTED,
+  })
+  configurationStatus: TicketConfigurationStatus;
 
   @CreateDateColumn()
   createdAt: Date;

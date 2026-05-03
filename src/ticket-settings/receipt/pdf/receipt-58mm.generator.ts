@@ -105,6 +105,18 @@ export class Receipt58mmGenerator implements ReceiptGenerator {
           align: 'center',
         });
 
+      if (snapshot.shop.email && snapshot.showEmail !== false)
+        doc.text(`Email: ${snapshot.shop.email}`, {
+          width: usableWidth,
+          align: 'center',
+        });
+
+      if (snapshot.shop.website && snapshot.showWebsite !== false)
+        doc.text(`Web: ${snapshot.shop.website}`, {
+          width: usableWidth,
+          align: 'center',
+        });
+
       doc.moveDown();
 
       // META

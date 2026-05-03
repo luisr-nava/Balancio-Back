@@ -60,4 +60,8 @@ export class UpdateTicketSettingsDto {
   @IsOptional()
   @IsEnum(ReceiptPaperSize)
   paperSize?: ReceiptPaperSize;
+
+  @IsOptional()
+  @IsBoolean()
+  ticketsEnabled?: boolean;
 }
