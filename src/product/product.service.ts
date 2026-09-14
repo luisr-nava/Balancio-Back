@@ -313,11 +313,9 @@ export class ProductService {
           ? product.shopProducts.filter((sp) => sp.shopId === shopId)
           : product.shopProducts;
 
-        shopProducts = shopProducts.filter((sp) => !sp.deletedAt);
+	shopProducts = shopProducts.filter((sp) => !sp.deletedAt);
 
-        shopProducts = shopProducts.filter((sp) => sp.stock! > 0);
-
-        if (typeof minStock === 'number') {
+	if (typeof minStock === 'number') {
           shopProducts = shopProducts.filter((sp) => sp.stock! >= minStock);
         }
 

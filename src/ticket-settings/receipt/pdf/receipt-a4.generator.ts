@@ -61,6 +61,18 @@ doc.text(`Subtotal: ${formatMoney(snapshot.totals.subtotal)}`, {
     align: 'right',
   });
 
+  if (snapshot.payment.amountReceived != null) {
+    doc.text(`Efectivo recibido: ${formatMoney(snapshot.payment.amountReceived)}`, {
+      align: 'right',
+    });
+  }
+
+  if (snapshot.payment.change != null) {
+    doc.text(`Vuelto: ${formatMoney(snapshot.payment.change)}`, {
+      align: 'right',
+    });
+  }
+
 if (snapshot.customFields && snapshot.customFields.length > 0) {
     doc.moveDown();
     doc.fontSize(10);

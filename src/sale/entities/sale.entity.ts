@@ -127,6 +127,12 @@ export class Sale {
   @Column({ type: 'text', nullable: true })
   cancellationReason: string | null;
 
+  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
+  amountReceived: number | null;
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
+  change: number | null;
+
   // Relaciones
   @ManyToOne(() => Shop)
   shop: Shop;

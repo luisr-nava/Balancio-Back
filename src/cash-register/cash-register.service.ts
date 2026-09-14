@@ -474,18 +474,36 @@ export class CashRegisterService {
       order: { openedAt: 'DESC' },
     });
 
-    return registers.map((cr) => ({
-      id: cr.id,
-      status: cr.status,
-      openingAmount: Number(cr.openingAmount),
-      closingAmount: cr.closingAmount ? Number(cr.closingAmount) : null,
-      actualAmount: cr.actualAmount ? Number(cr.actualAmount) : null,
-      difference: cr.difference ? Number(cr.difference) : null,
-      openedAt: cr.openedAt,
-      closedAt: cr.closedAt ?? null,
-      employeeId: cr.employeeId,
-      employeeName: cr.openedByName ?? null,
-    }));
+	return await Promise.all(
+	registers.map(async (cr) => {
+	let currentAmount: number | null = null;
+	let difference: number | null = null;
+
+	if (cr.status === CashRegisterStatus.OPEN) {
+	const movements = await this.cashMovementRepo.find({
+	where: { cashRegisterId: cr.id },
+	});
+	currentAmount = this.calculateExpectedAmount(movements);
+	difference = currentAmount - Number(cr.openingAmount);
+	} else {
+	difference = cr.difference ? Number(cr.difference) : null;
+	}
+
+	return {
+	id: cr.id,
+	status: cr.status,
+	openingAmount: Number(cr.openingAmount),
+	currentAmount,
+	closingAmount: cr.closingAmount ? Number(cr.closingAmount) : null,
+	actualAmount: cr.actualAmount ? Number(cr.actualAmount) : null,
+	difference,
+	openedAt: cr.openedAt,
+	closedAt: cr.closedAt ?? null,
+	employeeId: cr.employeeId,
+	employeeName: cr.openedByName ?? null,
+	};
+	}),
+	);
   }
 
   // ─── Live monitoring ────────────────────────────────────────────────────────

@@ -109,4 +109,8 @@ export class CreateSaleDto {
   @IsOptional()
   @IsDateString()
   saleDate?: string;
+
+  @IsOptional()
+  @IsNumber()
+  amountReceived?: number;
 }

@@ -177,24 +177,32 @@ export class SaleService {
         throw new BadRequestException('Una venta fiada requiere un cliente');
       }
 
-      const paymentStatus = dto.paymentStatus ?? PaymentStatus.PAID;
+  const paymentStatus = dto.paymentStatus ?? PaymentStatus.PAID;
 
-      // 3️⃣ Crear y persistir venta (finalTotal queda inmutable desde este momento)
-      const sale = manager.create(Sale, {
-        shopId: dto.shopId,
-        customerId: dto.customerId ?? null,
-        employeeId: user.id,
-        paymentMethodId: dto.paymentMethodId,
-        subtotal: saleSubtotal,
-        discountAmount: dto.discountAmount ?? 0,
-        taxAmount: saleTaxAmount,
-        totalAmount: finalTotal,
-        finalTotal: finalTotal,
-        paymentStatus,
-        isOnCredit,
-        invoiceType: dto.invoiceType ?? null,
-        invoiceNumber: dto.invoiceNumber ?? null,
-        notes: dto.notes ?? null,
+  if (dto.amountReceived != null && dto.amountReceived < finalTotal) {
+    throw new BadRequestException(
+      `El monto recibido ($${dto.amountReceived.toFixed(2)}) no puede ser menor al total ($${finalTotal.toFixed(2)})`,
+    );
+  }
+
+  // 3️⃣ Crear y persistir venta (finalTotal queda inmutable desde este momento)
+    const sale = manager.create(Sale, {
+      shopId: dto.shopId,
+      customerId: dto.customerId ?? null,
+      employeeId: user.id,
+      paymentMethodId: dto.paymentMethodId,
+      subtotal: saleSubtotal,
+      discountAmount: dto.discountAmount ?? 0,
+      taxAmount: saleTaxAmount,
+      totalAmount: finalTotal,
+      finalTotal: finalTotal,
+      paymentStatus,
+      isOnCredit,
+      invoiceType: dto.invoiceType ?? null,
+      invoiceNumber: dto.invoiceNumber ?? null,
+      notes: dto.notes ?? null,
+      amountReceived: dto.amountReceived != null ? dto.amountReceived : null,
+      change: dto.amountReceived != null && dto.amountReceived >= finalTotal ? dto.amountReceived - finalTotal : null,
         status:
           paymentStatus === PaymentStatus.PAID
             ? SaleStatus.COMPLETED

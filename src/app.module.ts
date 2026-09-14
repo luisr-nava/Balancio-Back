@@ -39,6 +39,7 @@ import { PromotionModule } from './promotion/promotion.module';
 import { CustomerAccountModule } from './customer-account/customer-account.module';
 import { DashboardVisibilityModule } from './dashboard-visibility/dashboard-visibility.module';
 import { TicketSettingsModule } from './ticket-settings/ticket-settings.module';
+import { CatalogModule } from './catalog/catalog.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { CustomThrottlerGuard } from './common/guards/custom-throttler.guard';
@@ -101,6 +102,7 @@ import { CustomThrottlerGuard } from './common/guards/custom-throttler.guard';
     DashboardVisibilityModule,
     TicketSettingsModule,
     ErrorLogModule,
+    CatalogModule,
   ],
   controllers: [],
   providers: [

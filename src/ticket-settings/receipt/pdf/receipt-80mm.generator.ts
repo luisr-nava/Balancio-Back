@@ -179,16 +179,33 @@ export class Receipt80mmGenerator implements ReceiptGenerator {
 
       doc.moveDown(0.2);
 
-      doc
-        .font('Helvetica-Bold')
-        .text(`TOTAL: ${formatMoney(snapshot.totals.total)}`, {
-          width: usableWidth,
-          align: 'right',
-        });
+  doc
+    .font('Helvetica-Bold')
+    .text(`TOTAL: ${formatMoney(snapshot.totals.total)}`, {
+      width: usableWidth,
+      align: 'right',
+    });
 
-      doc.moveDown(0.5);
-      drawSeparator();
-      doc.moveDown(0.5);
+  doc.moveDown(0.5);
+
+  if (snapshot.payment.amountReceived != null) {
+    doc.font('Courier').text(`Efectivo recibido: ${formatMoney(snapshot.payment.amountReceived)}`, {
+      width: usableWidth,
+      align: 'right',
+    });
+    doc.moveDown(0.2);
+  }
+
+  if (snapshot.payment.change != null) {
+    doc.font('Courier').text(`Vuelto: ${formatMoney(snapshot.payment.change)}`, {
+      width: usableWidth,
+      align: 'right',
+    });
+    doc.moveDown(0.2);
+  }
+
+  drawSeparator();
+  doc.moveDown(0.5);
 
       snapshot.customFields?.forEach((field) => {
         doc.text(`${field.label}: ${field.value}`, {

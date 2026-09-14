@@ -39,5 +39,6 @@ import { RealtimeModule } from '@/realtime/realtime.module';
   ],
   controllers: [ProductController],
   providers: [ProductService, ProductImportService],
+  exports: [ProductService],
 })
 export class ProductModule {}

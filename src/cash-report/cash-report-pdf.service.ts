@@ -8,6 +8,7 @@ import type {
   TableCell,
   TDocumentDefinitions,
 } from 'pdfmake/interfaces';
+import { formatCurrency } from '@/common/utils/format-currency.util';
 import { existsSync, readFileSync } from 'fs';
 import path from 'node:path';
 
@@ -434,12 +435,7 @@ export class CashReportPdfService {
     return movement.description ?? '-';
   }
 
-  private formatCurrency(amount: number, currency: string): string {
-    return new Intl.NumberFormat('es-ES', {
-      style: 'currency',
-      currency,
-    }).format(amount);
-  }
+  private formatCurrency = formatCurrency;
 
   private formatDateAndTime(date: Date | string): [string, string] {
     const dt = typeof date === 'string' ? new Date(date) : date;

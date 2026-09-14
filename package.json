@@ -11,7 +11,6 @@
     "start:dev": "nest start --watch",
     "start:prod": "node dist/src/main.js",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
-
     "migration:run": "typeorm-ts-node-commonjs migration:run -d src/database/data-source.ts",
     "migration:revert": "typeorm-ts-node-commonjs migration:revert -d src/database/data-source.ts",
     "migration:show": "typeorm-ts-node-commonjs migration:show -d src/database/data-source.ts",
@@ -46,6 +45,7 @@
     "dayjs": "^1.11.19",
     "dotenv": "^17.2.3",
     "exceljs": "^4.4.0",
+    "handlebars": "^4.7.9",
     "helmet": "^8.1.0",
     "iana-timezones": "^1.1.2022-e",
     "joi": "^18.0.2",
@@ -76,6 +76,7 @@
     "@types/bcrypt": "^6.0.0",
     "@types/country-data": "^0.0.5",
     "@types/express": "^5.0.6",
+    "@types/handlebars": "^4.0.40",
     "@types/jest": "^30.0.0",
     "@types/multer": "^2.0.0",
     "@types/node": "^22.19.7",

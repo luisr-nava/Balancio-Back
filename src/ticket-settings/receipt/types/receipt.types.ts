@@ -36,6 +36,8 @@ export interface ReceiptTotalsSnapshot {
 
 export interface ReceiptPaymentSnapshot {
   status: string;
+  amountReceived?: number | null;
+  change?: number | null;
 }
 
 export interface ReceiptMetadataSnapshot {

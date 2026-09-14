@@ -16,9 +16,9 @@ import { UserRole } from '../entities/user.entity';
 
 export class CreateUserDto {
   @IsString()
-  @MinLength(8, {
-    message: 'La contraseña debe tener al menos 10 caracteres',
-  })
+@MinLength(10, {
+  message: 'La contraseña debe tener al menos 10 caracteres',
+})
   @MaxLength(128, {
     message: 'La contraseña no puede exceder 128 caracteres',
   })

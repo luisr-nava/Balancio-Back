@@ -197,10 +197,22 @@ export class Receipt58mmGenerator implements ReceiptGenerator {
 
       doc.fontSize(11).font('Courier-Bold');
 
-      doc.text(totalText, rightEdge - doc.widthOfString(totalText) - 5, doc.y);
+  doc.text(totalText, rightEdge - doc.widthOfString(totalText) - 5, doc.y);
 
-      doc.fontSize(9).font('Courier');
-      doc.moveDown(0.5);
+  doc.fontSize(9).font('Courier');
+  doc.moveDown(0.5);
+
+  if (snapshot.payment.amountReceived != null) {
+    const receivedText = `Recibido: ${formatMoney(snapshot.payment.amountReceived)}`;
+    doc.text(receivedText, rightEdge - doc.widthOfString(receivedText) - 5, doc.y);
+    doc.moveDown(0.3);
+  }
+
+  if (snapshot.payment.change != null) {
+    const changeText = `Vuelto: ${formatMoney(snapshot.payment.change)}`;
+    doc.text(changeText, rightEdge - doc.widthOfString(changeText) - 5, doc.y);
+    doc.moveDown(0.3);
+  }
 
       // CUSTOM FIELDS
       if (snapshot.customFields?.length) {

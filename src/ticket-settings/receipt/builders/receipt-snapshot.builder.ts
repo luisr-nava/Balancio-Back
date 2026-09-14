@@ -36,9 +36,11 @@ export class ReceiptSnapshotBuilder {
         tax: Number(sale.taxAmount ?? 0),
         total: Number(sale.totalAmount ?? 0),
       },
-      payment: {
-        status: sale.paymentStatus,
-      },
+    payment: {
+      status: sale.paymentStatus,
+      amountReceived: sale.amountReceived != null ? Number(sale.amountReceived) : null,
+      change: sale.change != null ? Number(sale.change) : null,
+    },
       metadata: {
         receiptType: 'STANDARD',
         generatedAt: new Date(),
